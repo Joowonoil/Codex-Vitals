@@ -65,6 +65,56 @@ final class AccountListVisibilityTests: XCTestCase {
         XCTAssertEqual(account.freePlanResetSeconds, 86_400)
     }
 
+    func testSwitchIdentityPolicyPrefersStoredCapturedAccountID() {
+        let account = makeAccount(
+            id: "person@example.com|usage-workspace-id",
+            email: "person@example.com",
+            plan: "pro",
+            sessionFree: 50,
+            weeklyFree: 50,
+            sessionResetSeconds: 0
+        )
+
+        XCTAssertEqual(
+            CodexSwitchIdentityPolicy.expectedAccountID(
+                for: account,
+                storedAccountID: "captured-auth-account-id"
+            ),
+            "captured-auth-account-id"
+        )
+    }
+
+    func testSwitchIdentityPolicyIgnoresTransientPersonalUsageIDWithoutStoredRecord() {
+        let account = makeAccount(
+            id: "person@example.com|usage-workspace-id",
+            email: "person@example.com",
+            plan: "pro",
+            sessionFree: 50,
+            weeklyFree: 50,
+            sessionResetSeconds: 0
+        )
+
+        XCTAssertNil(
+            CodexSwitchIdentityPolicy.expectedAccountID(for: account, storedAccountID: nil)
+        )
+    }
+
+    func testSwitchIdentityPolicyUsesTransientTeamIDAsFallback() {
+        let account = makeAccount(
+            id: "person@example.com|usage-workspace-id",
+            email: "person@example.com",
+            plan: "team",
+            sessionFree: 50,
+            weeklyFree: 50,
+            sessionResetSeconds: 0
+        )
+
+        XCTAssertEqual(
+            CodexSwitchIdentityPolicy.expectedAccountID(for: account, storedAccountID: nil),
+            "usage-workspace-id"
+        )
+    }
+
     @MainActor
     func testWeeklyOnlyPrimaryWindowDoesNotCreateFakeFiveHourQuota() {
         let windows = UsageService.quotaWindows(from: [

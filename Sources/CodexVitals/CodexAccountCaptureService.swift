@@ -860,6 +860,25 @@ struct CodexSwitchResult {
     let sourceProfileKey: String?
 }
 
+enum CodexSwitchIdentityPolicy {
+    static func expectedAccountID(for account: Account, storedAccountID: String?) -> String? {
+        let stored = storedAccountID?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let stored, !stored.isEmpty {
+            return stored
+        }
+
+        let usageAccountID = account.accountID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !usageAccountID.isEmpty,
+              !account.plan.isPersonalPlanType,
+              !account.workspace.isPersonalPlanType,
+              !usageAccountID.isLikelyPersonalAccountID else {
+            return nil
+        }
+        return usageAccountID
+    }
+}
+
 enum CodexAccountSwitchError: LocalizedError {
     case codexAppMissing
     case capturedProfileMissing(String)
@@ -977,17 +996,21 @@ final class CodexAccountSwitchService: @unchecked Sendable {
     }
 
     private func validateCapturedProfileIdentity(_ profile: CapturedCodexProfile, for account: Account) throws {
-        let expectedAccountID = account.accountID.trimmingCharacters(in: .whitespacesAndNewlines)
-        let shouldCompareAccountID = !expectedAccountID.isEmpty
-            && !expectedAccountID.isLikelyPersonalAccountID
+        let storedAccountID = account.profileKey.flatMap { profileKey in
+            AccountProfileStore.loadLocalProfiles()[profileKey]?["accountId"] as? String
+        }
+        let expectedAccountID = CodexSwitchIdentityPolicy.expectedAccountID(
+            for: account,
+            storedAccountID: storedAccountID
+        )
         guard let auth = StoredCodexAuth.load(from: profile.authURL),
               auth.email == account.email.lowercased(),
-              !shouldCompareAccountID || auth.accountID == expectedAccountID else {
+              expectedAccountID == nil || auth.accountID == expectedAccountID else {
             let auth = StoredCodexAuth.load(from: profile.authURL)
             throw CodexAccountSwitchError.capturedProfileIdentityMismatch(
                 expectedEmail: account.email.lowercased(),
                 actualEmail: auth?.email ?? "",
-                expectedAccountID: expectedAccountID,
+                expectedAccountID: expectedAccountID ?? "",
                 actualAccountID: auth?.accountID ?? ""
             )
         }
