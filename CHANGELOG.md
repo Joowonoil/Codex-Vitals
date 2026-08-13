@@ -2,6 +2,11 @@
 
 All notable changes to Codex Vitals will be documented here.
 
+## 1.3.2 - 2026-08-13
+
+- Fixed account switching when the OpenAI usage response contains a blank account ID.
+- Preserved captured account UUIDs instead of treating internal profile keys as account identities.
+
 ## 1.3.1 - 2026-07-15
 
 - Reworked the header into a connected glass control group that matches the RamterStudio menu bar app family.

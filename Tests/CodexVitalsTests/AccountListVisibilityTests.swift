@@ -28,6 +28,35 @@ final class AccountListVisibilityTests: XCTestCase {
         XCTAssertNotEqual(first, second)
     }
 
+    func testResolvedAccountIDFallsBackWhenUsageContainsEmptyValue() {
+        let accountID = UsageService.resolvedAccountID(
+            usage: ["account_id": "  "],
+            profile: ["accountId": "account-uuid"]
+        )
+
+        XCTAssertEqual(accountID, "account-uuid")
+    }
+
+    func testAccountIDDoesNotExposeSyntheticProfileKeyFallback() {
+        let profileKey = "openai-codex:team:person@example.com"
+        let account = Account(
+            id: "person@example.com|\(profileKey)",
+            profileKey: profileKey,
+            email: "person@example.com",
+            workspace: "team",
+            plan: "team",
+            sessionFree: 80,
+            weeklyFree: 80,
+            sessionResetSeconds: 0,
+            weeklyResetSeconds: 0,
+            planRenewalDate: nil,
+            hasError: false,
+            errorMessage: nil
+        )
+
+        XCTAssertEqual(account.accountID, "")
+    }
+
     func testExpiredOrRevokedAuthError() {
         XCTAssertTrue(UsageService.isExpiredOrRevokedAuthError("Expired or revoked"))
         XCTAssertTrue(UsageService.isExpiredOrRevokedAuthError("Token expired"))

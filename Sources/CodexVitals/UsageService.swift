@@ -97,7 +97,7 @@ final class UsageService: Sendable {
                      ?? key.components(separatedBy: ":").last ?? key
             let alias = Account.normalizedAlias(p["alias"] as? String)
 
-            let aid = (usage["account_id"] as? String) ?? (p["accountId"] as? String) ?? ""
+            let aid = Self.resolvedAccountID(usage: usage, profile: p)
             let dedup = Self.dedupID(email: email, accountID: aid, profileKey: key)
             guard !seenEmails.contains(dedup) else { continue }
             seenEmails.insert(dedup)
@@ -169,6 +169,18 @@ final class UsageService: Sendable {
 
     static func dedupID(email: String, accountID: String, profileKey: String) -> String {
         "\(email.lowercased())|\(accountID.isEmpty ? profileKey : accountID)"
+    }
+
+    static func resolvedAccountID(
+        usage: [String: Any],
+        profile: [String: Any]
+    ) -> String {
+        for candidate in [usage["account_id"] as? String, profile["accountId"] as? String] {
+            guard let value = candidate?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !value.isEmpty else { continue }
+            return value
+        }
+        return ""
     }
 
     static func quotaWindows(from rateLimit: [String: Any]?) -> [QuotaWindow] {
@@ -530,7 +542,7 @@ final class UsageService: Sendable {
             guard let profile = profiles[key],
                   let usage = usages[key] else { continue }
 
-            let accountID = (usage["account_id"] as? String) ?? (profile["accountId"] as? String) ?? ""
+            let accountID = Self.resolvedAccountID(usage: usage, profile: profile)
             guard !accountID.isEmpty else { continue }
 
             let planType = resolvedPlanType(profile: profile, usage: usage)

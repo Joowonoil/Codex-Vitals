@@ -128,7 +128,9 @@ struct Account: Identifiable, Equatable, Codable {
     var accountID: String {
         let pieces = id.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false)
         guard pieces.count == 2 else { return "" }
-        return String(pieces[1])
+        let value = String(pieces[1])
+        guard value != profileKey else { return "" }
+        return value
     }
 
     /// New snapshots store exact API windows. Older snapshots fall back to the legacy 5h/1w fields.

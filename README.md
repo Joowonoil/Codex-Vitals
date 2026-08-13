@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Joowonoil/codex-vitals/releases/download/v1.3.1/CodexVitals-1.3.1.dmg"><strong>Download for macOS</strong></a>
+  <a href="https://github.com/Joowonoil/codex-vitals/releases/download/v1.3.2/CodexVitals-1.3.2.dmg"><strong>Download for macOS</strong></a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
   <a href="https://github.com/Joowonoil/codex-vitals/releases/download/windows-v1.0.0/CodexVitals-Windows-1.0.0-Setup.exe"><strong>Download for Windows</strong></a>
 </p>
