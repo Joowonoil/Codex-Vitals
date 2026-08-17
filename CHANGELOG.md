@@ -2,6 +2,15 @@
 
 All notable changes to Codex Vitals will be documented here.
 
+## 1.3.3 - 2026-08-17
+
+- Added proactive OAuth refresh for inactive captured Codex profiles before access tokens expire.
+- Kept the active Codex identity under Codex's ownership while mirroring its live token state.
+- Added per-profile refresh coordination, bounded concurrent refreshes, retry backoff, and permanent-failure handling.
+- Preserved captured profile auth as the canonical credential source and repaired derived account caches after refresh.
+- Kept affected accounts visible with an account-level Reconnect action without requiring deletion.
+- Replaced cache remove-then-move writes with direct atomic writes to prevent stale temporary files.
+
 ## 1.3.2 - 2026-08-13
 
 - Fixed account switching when the OpenAI usage response contains a blank account ID.

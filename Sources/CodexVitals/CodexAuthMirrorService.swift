@@ -320,8 +320,12 @@ struct StoredCodexAuth {
     let lastRefreshDate: Date?
 
     static func load(from url: URL) -> StoredCodexAuth? {
-        guard let root = AppStorage.readJSON(url),
-              let tokens = root["tokens"] as? [String: Any],
+        guard let root = AppStorage.readJSON(url) else { return nil }
+        return parse(root: root)
+    }
+
+    static func parse(root: [String: Any]) -> StoredCodexAuth? {
+        guard let tokens = root["tokens"] as? [String: Any],
               let idToken = tokens["id_token"] as? String,
               let accessToken = tokens["access_token"] as? String,
               let refreshToken = tokens["refresh_token"] as? String,
@@ -348,6 +352,23 @@ struct StoredCodexAuth {
             idExpiresAt: idExp.map { Int($0 * 1000) } ?? 0,
             lastRefreshDate: parseISO8601(root["last_refresh"] as? String)
         )
+    }
+
+    func matchesIdentity(of other: StoredCodexAuth) -> Bool {
+        guard !subject.isEmpty,
+              subject == other.subject,
+              !email.isEmpty,
+              email == other.email else {
+            return false
+        }
+
+        if !accountID.isEmpty,
+           !other.accountID.isEmpty,
+           accountID != other.accountID {
+            return false
+        }
+
+        return true
     }
 
     private static func decodePayload(_ token: String) -> [String: Any]? {

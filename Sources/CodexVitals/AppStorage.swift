@@ -82,7 +82,7 @@ enum AccountProfileStore {
 
     static func load() -> AccountProfileCollection {
         if let local = loadLocal(), !local.profiles.isEmpty {
-            return local
+            return CodexCanonicalCredentialStore().hydrate(local)
         }
 
         return AccountProfileCollection(profiles: [:], orderedKeys: [], workspaceAliases: [:])
@@ -153,13 +153,7 @@ enum AccountProfileStore {
                 throw Error.missingProfile(profileKey)
             }
 
-            entry["access"] = accessToken
-            entry["refresh"] = refreshToken
-            entry["expires"] = expiresAt
-            profiles[profileKey] = entry
-            root["profiles"] = profiles
-            try AppStorage.writeJSON(root, to: AppStorage.accountsURL, permissions: 0o600)
-
+            // Captured auth.json is canonical. Never advance the derived cache first.
             try updateCapturedProfiles(
                 profileKey: profileKey,
                 email: email,
@@ -169,6 +163,13 @@ enum AccountProfileStore {
                 idToken: idToken,
                 expiresAt: expiresAt
             )
+
+            entry["access"] = accessToken
+            entry["refresh"] = refreshToken
+            entry["expires"] = expiresAt
+            profiles[profileKey] = entry
+            root["profiles"] = profiles
+            try AppStorage.writeJSON(root, to: AppStorage.accountsURL, permissions: 0o600)
         }
     }
 

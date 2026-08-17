@@ -56,9 +56,9 @@ enum CodexAccountCaptureError: LocalizedError {
 final class CodexAccountCaptureService: @unchecked Sendable {
     private let fileManager = FileManager.default
     private let homeURL = FileManager.default.homeDirectoryForCurrentUser
-    private let clientID = "app_EMoamEEZ73f0CkXaXp7hrann"
+    private let clientID = CodexOAuthConfiguration.clientID
     private let authorizeURL = URL(string: "https://auth.openai.com/oauth/authorize")!
-    private let tokenURL = URL(string: "https://auth.openai.com/oauth/token")!
+    private let tokenURL = CodexOAuthConfiguration.tokenURL
     private let redirectURI = "http://localhost:1455/auth/callback"
     private let scope = "openid profile email offline_access"
     private let loginTokenIssueTolerance: TimeInterval = 600
@@ -923,7 +923,14 @@ final class CodexAccountSwitchService: @unchecked Sendable {
         installedAppURL != nil
     }
 
-    func switchToAccount(_ account: Account) throws -> CodexSwitchResult {
+    func switchToAccount(_ account: Account) async throws -> CodexSwitchResult {
+        let gateKey = account.profileKey ?? account.id
+        return try await CodexProfileOperationGate.shared.withExclusiveAccess(for: gateKey) {
+            try self.switchToAccountExclusively(account)
+        }
+    }
+
+    private func switchToAccountExclusively(_ account: Account) throws -> CodexSwitchResult {
         guard let appURL = installedAppURL else {
             throw CodexAccountSwitchError.codexAppMissing
         }
@@ -997,9 +1004,7 @@ final class CodexAccountSwitchService: @unchecked Sendable {
         guard let activeAuth = StoredCodexAuth.load(from: defaultAuthURL) else { return nil }
         return capturedProfiles().first { profile in
             guard let profileAuth = StoredCodexAuth.load(from: profile.authURL) else { return false }
-            return profileAuth.idToken == activeAuth.idToken
-                && profileAuth.accessToken == activeAuth.accessToken
-                && profileAuth.refreshToken == activeAuth.refreshToken
+            return profileAuth.matchesIdentity(of: activeAuth)
         }?.sourceProfileKey
     }
 

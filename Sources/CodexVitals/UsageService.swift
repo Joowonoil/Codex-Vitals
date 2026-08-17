@@ -1,15 +1,16 @@
 import Foundation
 
 /// Fetches best-effort Codex usage data from chatgpt.com.
-final class UsageService: Sendable {
+final class UsageService: @unchecked Sendable {
 
     private let ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                    + "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
     private let refreshedAccessTokenKey = "__codex_switchboard_access_token"
     private let metadataCache = AccountMetadataCache()
+    private let tokenRefreshService: CodexTokenRefreshService
     private static let maxConcurrentRequests = 4
     private static let metadataCacheTTL: TimeInterval = 6 * 60 * 60
-    private static let refreshFailedError = "Refresh failed - re-login required"
+    private static let refreshFailedError = CodexTokenRefreshService.reloginRequiredMessage
 
     private struct AccountMetadata: Sendable {
         let workspaceName: String?
@@ -36,6 +37,10 @@ final class UsageService: Sendable {
         func store(_ value: [String: AccountMetadata], for token: String, fetchedAt: Date) {
             entries[token] = Entry(value: value, fetchedAt: fetchedAt)
         }
+    }
+
+    init(tokenRefreshService: CodexTokenRefreshService = CodexTokenRefreshService()) {
+        self.tokenRefreshService = tokenRefreshService
     }
 
     // MARK: - Public
@@ -216,12 +221,39 @@ final class UsageService: Sendable {
     }
 
     private func fetchUsage(profileKey: String, profile: [String: Any]) async -> [String: Any] {
-        guard let accessToken = profile["access"] as? String,
-              !accessToken.isEmpty else {
+        let initial = await tokenRefreshService.credentialForUsage(
+            profileKey: profileKey,
+            profile: profile
+        )
+        guard case let .ready(credential) = initial else {
+            if case let .unavailable(message) = initial {
+                return ["error": message]
+            }
             return ["error": "missing access token"]
         }
 
-        return usage(await fetchUsage(token: accessToken), accessToken: accessToken)
+        var accessToken = credential.accessToken
+        var response = await fetchUsage(token: accessToken)
+
+        if !credential.didRefresh,
+           Self.authErrorCode(from: response) == "token_expired" {
+            let recovery = await tokenRefreshService.credentialForUsage(
+                profileKey: profileKey,
+                profile: profile,
+                forceRefresh: true
+            )
+            switch recovery {
+            case let .ready(refreshed) where refreshed.accessToken != accessToken:
+                accessToken = refreshed.accessToken
+                response = await fetchUsage(token: accessToken)
+            case let .unavailable(message):
+                return ["error": message]
+            default:
+                break
+            }
+        }
+
+        return usage(response, accessToken: accessToken)
     }
 
     private func fetchUsages(
@@ -229,11 +261,7 @@ final class UsageService: Sendable {
         profiles: [String: [String: Any]]
     ) async -> [String: [String: Any]] {
         let jobs: [(String, [String: Any])] = validKeys.compactMap { key in
-            guard let profile = profiles[key],
-                  let token = profile["access"] as? String,
-                  !token.isEmpty else {
-                return nil
-            }
+            guard let profile = profiles[key] else { return nil }
             return (key, profile)
         }
 
@@ -425,21 +453,10 @@ final class UsageService: Sendable {
             return error
         }
 
-        if let detail = data["detail"] as? [String: Any],
-           let code = detail["code"] as? String,
-           !code.isEmpty {
+        if let code = Self.authErrorCode(from: data) {
             switch code {
             case "deactivated_workspace":
                 return "Workspace deactivated"
-            default:
-                return code.replacingOccurrences(of: "_", with: " ")
-            }
-        }
-
-        if let apiError = data["error"] as? [String: Any],
-           let code = apiError["code"] as? String,
-           !code.isEmpty {
-            switch code {
             case "token_expired":
                 return "Token expired"
             case "token_invalidated":
@@ -475,16 +492,51 @@ final class UsageService: Sendable {
     }
 
     static func isRecoverableAuthError(_ message: String?) -> Bool {
-        message == "Token expired"
+        normalizedAuthMessage(message) == "token expired"
     }
 
     static func requiresRelogin(_ message: String?) -> Bool {
-        message == "Expired or revoked"
-            || message == "Token invalidated"
-            || message == "Token revoked"
-            || message == refreshFailedError
-            || message == "HTTP 401"
-            || message == "HTTP 403"
+        let normalized = normalizedAuthMessage(message)
+        return normalized == "expired or revoked"
+            || normalized == "token invalidated"
+            || normalized == "token revoked"
+            || normalized == normalizedAuthMessage(refreshFailedError)
+            || normalized == "http 401"
+            || normalized == "http 403"
+            || normalized == "re login required"
+    }
+
+    static func authErrorCode(from data: [String: Any]) -> String? {
+        let candidates: [String?] = [
+            (data["detail"] as? [String: Any])?["code"] as? String,
+            (data["error"] as? [String: Any])?["code"] as? String,
+            data["code"] as? String,
+        ]
+        guard let raw = candidates.compactMap({ $0 }).first else {
+            if let error = data["error"] as? String {
+                let normalized = normalizedAuthMessage(error)
+                if normalized == "token expired" { return "token_expired" }
+                if normalized == "token invalidated" { return "token_invalidated" }
+                if normalized == "token revoked" { return "token_revoked" }
+            }
+            return nil
+        }
+
+        return raw
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "-", with: "_")
+            .replacingOccurrences(of: " ", with: "_")
+    }
+
+    private static func normalizedAuthMessage(_ message: String?) -> String {
+        (message ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
     }
 
     private func readableAPIError(from data: [String: Any]) -> String? {

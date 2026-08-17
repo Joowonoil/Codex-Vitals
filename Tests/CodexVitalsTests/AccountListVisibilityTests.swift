@@ -60,6 +60,7 @@ final class AccountListVisibilityTests: XCTestCase {
     func testExpiredOrRevokedAuthError() {
         XCTAssertTrue(UsageService.isExpiredOrRevokedAuthError("Expired or revoked"))
         XCTAssertTrue(UsageService.isExpiredOrRevokedAuthError("Token expired"))
+        XCTAssertTrue(UsageService.isExpiredOrRevokedAuthError("token expired"))
         XCTAssertTrue(UsageService.isExpiredOrRevokedAuthError("Token invalidated"))
         XCTAssertTrue(UsageService.isExpiredOrRevokedAuthError("Token revoked"))
         XCTAssertTrue(UsageService.isExpiredOrRevokedAuthError("Refresh failed - re-login required"))
@@ -68,6 +69,7 @@ final class AccountListVisibilityTests: XCTestCase {
 
     func testRecoverableAuthErrorIsNotARowSwitchAffordance() {
         XCTAssertTrue(UsageService.isRecoverableAuthError("Token expired"))
+        XCTAssertFalse(UsageService.requiresRelogin("token expired"))
         XCTAssertFalse(UsageService.isRecoverableAuthError("Token revoked"))
         XCTAssertFalse(UsageService.isRecoverableAuthError("Token invalidated"))
         XCTAssertFalse(UsageService.isRecoverableAuthError("HTTP 403"))

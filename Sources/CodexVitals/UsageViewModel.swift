@@ -303,7 +303,7 @@ final class UsageViewModel: ObservableObject {
 
     func needsRelogin(_ account: Account) -> Bool {
         !codexLoginStatus.contains(account)
-            || UsageService.isExpiredOrRevokedAuthError(account.errorMessage)
+            || UsageService.requiresRelogin(account.errorMessage)
     }
 
     func isRelogging(_ account: Account) -> Bool {
@@ -510,7 +510,7 @@ final class UsageViewModel: ObservableObject {
 
         switchTask = Task.detached { [switchService] in
             do {
-                let result = try switchService.switchToAccount(account)
+                let result = try await switchService.switchToAccount(account)
                 await MainActor.run {
                     self.activeCodexProfileKey = result.sourceProfileKey
                     self.switchingAccountID = nil

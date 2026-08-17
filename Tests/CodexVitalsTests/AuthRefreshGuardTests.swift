@@ -1,41 +1,42 @@
 import XCTest
 
 final class AuthRefreshGuardTests: XCTestCase {
-    func testVitalsNeverUsesRefreshTokenGrant() throws {
-        let files = try productionTextFiles()
+    func testRefreshGrantIsScopedToDedicatedService() throws {
+        let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        let serviceURL = root.appendingPathComponent("Sources/CodexVitals/CodexTokenRefreshService.swift")
+        let service = try String(contentsOf: serviceURL, encoding: .utf8)
+        let coordinatorURL = root.appendingPathComponent("Sources/CodexVitals/CodexAuthOperationCoordinator.swift")
+        let coordinator = try String(contentsOf: coordinatorURL, encoding: .utf8)
 
-        for file in files {
+        XCTAssertTrue(FileManager.default.fileExists(atPath: serviceURL.path))
+        XCTAssertTrue(service.contains(#""grant_type": "refresh_token""#))
+        XCTAssertTrue(service.contains("activeAuth(for:"))
+        XCTAssertTrue(service.contains("profileGate.withExclusiveAccess"))
+        XCTAssertTrue(coordinator.contains("CodexRefreshPermitPool(limit: 2)"))
+
+        for file in try productionSwiftFiles() where file != serviceURL {
             let text = try String(contentsOf: file, encoding: .utf8)
-            let compact = text
-                .lowercased()
-                .replacingOccurrences(of: #"\s+"#, with: "", options: .regularExpression)
-
-            for snippet in forbiddenRefreshGrantSnippets {
-                XCTAssertFalse(compact.contains(snippet), "\(file.path) must not spend refresh tokens")
-            }
-
-            for identifier in forbiddenRefreshGrantIdentifiers {
-                XCTAssertFalse(text.contains(identifier), "\(file.path) must not define refresh-token grant flow")
-            }
-
-            for line in text.components(separatedBy: .newlines)
-            where line.contains("grant_type") {
-                XCTAssertTrue(
-                    line.contains("authorization_code"),
-                    "\(file.path) uses a non-login OAuth grant: \(line)"
-                )
-            }
+            XCTAssertFalse(
+                text.contains(#""grant_type": "refresh_token""#),
+                "Refresh-token grants must stay inside the guarded refresh service"
+            )
         }
     }
 
-    func testTokenRefreshServiceDoesNotExist() throws {
+    func testAccountSwitchUsesTheSamePerProfileGateAsRefresh() throws {
         let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-        let serviceURL = root.appendingPathComponent("Sources/CodexVitals/CodexTokenRefreshService.swift")
+        let serviceURL = root.appendingPathComponent("Sources/CodexVitals/CodexAccountCaptureService.swift")
+        let text = try String(contentsOf: serviceURL, encoding: .utf8)
 
-        XCTAssertFalse(
-            FileManager.default.fileExists(atPath: serviceURL.path),
-            "Vitals must not include a service that spends/rotates refresh tokens"
-        )
+        guard let switchRange = text.range(of: "func switchToAccount"),
+              let exclusiveRange = text.range(
+                of: "private func switchToAccountExclusively",
+                range: switchRange.upperBound..<text.endIndex
+              ) else {
+            return XCTFail("Could not locate guarded account switch")
+        }
+        let wrapper = text[switchRange.lowerBound..<exclusiveRange.lowerBound]
+        XCTAssertTrue(wrapper.contains("CodexProfileOperationGate.shared.withExclusiveAccess"))
     }
 
     func testSwitchPersistsFinalAuthRotationAfterCodexStops() throws {
@@ -374,60 +375,21 @@ final class AuthRefreshGuardTests: XCTestCase {
         )
     }
 
-    private var forbiddenRefreshGrantSnippets: [String] {
-        [
-            #""grant_type","refresh_token""#,
-            #""grant_type":"refresh_token""#,
-            #"grant_type=refresh_token"#,
-            #"grant_type%3drefresh_token"#,
-            #"grant_type\",value:\"refresh_token"#,
-        ]
-    }
-
-    private var forbiddenRefreshGrantIdentifiers: [String] {
-        [
-            "refreshAccessToken",
-            "refreshTokens",
-            "RefreshedTokenResponse",
-            "automaticTokenRefreshEnabled",
-            "tokenRefreshFailedUsage",
-        ]
-    }
-
-    private func productionTextFiles() throws -> [URL] {
+    private func productionSwiftFiles() throws -> [URL] {
         let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-        let directories = [
-            root.appendingPathComponent("Sources", isDirectory: true),
-            root.appendingPathComponent("scripts", isDirectory: true),
-        ]
-        let roots = directories + [
-            root.appendingPathComponent("build-app.sh"),
-            root.appendingPathComponent("build-pkg.sh"),
-        ]
-        var files: [URL] = []
-
-        for url in roots {
-            if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
-                files += FileManager.default.enumerator(
-                    at: url,
-                    includingPropertiesForKeys: [.isRegularFileKey]
-                )?.compactMap { item -> URL? in
-                    guard let url = item as? URL,
-                          Self.productionExtensions.contains(url.pathExtension),
-                          (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else {
-                        return nil
-                    }
-                    return url
-                } ?? []
-            } else if FileManager.default.fileExists(atPath: url.path) {
-                files.append(url)
+        let sourceURL = root.appendingPathComponent("Sources", isDirectory: true)
+        return FileManager.default.enumerator(
+            at: sourceURL,
+            includingPropertiesForKeys: [.isRegularFileKey]
+        )?.compactMap { item -> URL? in
+            guard let url = item as? URL,
+                  url.pathExtension == "swift",
+                  (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else {
+                return nil
             }
-        }
-
-        return files
+            return url
+        } ?? []
     }
-
-    private static let productionExtensions: Set<String> = ["swift", "mjs", "js", "sh"]
 
     private func assertStaleLoginValidation(in text: String, functionName: String) throws {
         guard let functionRange = text.range(of: "func \(functionName)") else {

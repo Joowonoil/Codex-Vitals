@@ -101,13 +101,7 @@ enum TeamNameCacheStore {
 
     private static func savePayload(_ payload: Payload) {
         guard let data = try? JSONEncoder().encode(payload) else { return }
-        let tempURL = url.deletingLastPathComponent()
-            .appendingPathComponent(".\(url.lastPathComponent).\(UUID().uuidString).tmp")
-        try? data.write(to: tempURL, options: [.atomic])
-        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: tempURL.path)
-        if FileManager.default.fileExists(atPath: url.path) {
-            try? FileManager.default.removeItem(at: url)
-        }
-        try? FileManager.default.moveItem(at: tempURL, to: url)
+        try? data.write(to: url, options: [.atomic])
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
 }
