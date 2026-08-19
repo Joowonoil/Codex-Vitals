@@ -50,74 +50,116 @@ struct AccountListView: View {
 
     @ViewBuilder
     private var listBody: some View {
-        VStack(spacing: 0) {
-            if vm.groupByWorkspace {
-                if !vm.priorityAccounts.isEmpty {
-                    PrioritySeparatorHeader(count: vm.priorityAccounts.count)
-                    ForEach(vm.groupedPriorityAccounts, id: \.0) { ws, accs in
-                        SectionHeader(
-                            originalName: ws,
-                            displayName: vm.workspaceDisplayName(for: ws),
-                            count: accs.count,
-                            hasAlias: vm.workspaceHasDisplayAlias(ws),
-                            setAlias: { vm.setWorkspaceAlias($0, for: ws) }
-                        )
-                        rows(accs)
-                    }
-                }
-                if !vm.normalActiveAccounts.isEmpty {
-                    ForEach(vm.groupedNormalActiveAccounts, id: \.0) { ws, accs in
-                        SectionHeader(
-                            originalName: ws,
-                            displayName: vm.workspaceDisplayName(for: ws),
-                            count: accs.count,
-                            hasAlias: vm.workspaceHasDisplayAlias(ws),
-                            setAlias: { vm.setWorkspaceAlias($0, for: ws) }
-                        )
-                        rows(accs)
-                    }
-                }
-                if !vm.exhaustedAccounts.isEmpty {
-                    waitingForResetGroup {
-                        ForEach(vm.groupedExhaustedAccounts, id: \.0) { ws, accs in
-                            SectionHeader(
-                                originalName: ws,
-                                displayName: vm.workspaceDisplayName(for: ws),
-                                count: accs.count,
-                                hasAlias: vm.workspaceHasDisplayAlias(ws),
-                                setAlias: { vm.setWorkspaceAlias($0, for: ws) }
-                            )
-                            rows(accs)
-                        }
-                        freeWaitingGroup
-                    }
-                }
-            } else {
-                if !vm.priorityAccounts.isEmpty {
-                    PrioritySeparatorHeader(count: vm.priorityAccounts.count)
-                    rows(vm.priorityAccounts)
-                }
-                if !vm.normalActiveAccounts.isEmpty {
-                    rows(vm.normalActiveAccounts)
-                }
-                if !vm.exhaustedAccounts.isEmpty {
-                    waitingForResetGroup {
-                        rows(vm.nonFreeExhaustedAccounts)
-                        freeWaitingGroup
-                    }
-                }
+        VStack(spacing: 6) {
+            ForEach(providerSections, id: \.provider) { section in
+                providerSection(section.provider, accountCount: section.accounts.count)
             }
         }
         .padding(.vertical, 4)
     }
 
+    private var displayedAccounts: [Account] {
+        vm.priorityAccounts
+            + vm.normalActiveAccounts
+            + vm.nonFreeExhaustedAccounts
+            + vm.freeWaitingAccounts
+    }
+
+    private var providerSections: [(provider: AccountProvider, accounts: [Account])] {
+        UsageViewModel.groupByProvider(displayedAccounts)
+    }
+
+    @ViewBuilder
+    private func providerSection(_ provider: AccountProvider, accountCount: Int) -> some View {
+        VStack(spacing: 0) {
+            ProviderSectionHeader(provider: provider, count: accountCount)
+            if vm.groupByWorkspace && provider == .codex {
+                groupedProviderContent(provider)
+            } else {
+                flatProviderContent(provider)
+            }
+        }
+        .background(Theme.providerSectionSurface(for: provider))
+    }
+
+    @ViewBuilder
+    private func flatProviderContent(_ provider: AccountProvider) -> some View {
+        let priority = providerAccounts(vm.priorityAccounts, provider: provider)
+        let active = providerAccounts(vm.normalActiveAccounts, provider: provider)
+        let exhausted = providerAccounts(vm.exhaustedAccounts, provider: provider)
+
+        if !priority.isEmpty {
+            PrioritySeparatorHeader(count: priority.count)
+            rows(priority)
+        }
+        if !active.isEmpty {
+            rows(active)
+        }
+        if !exhausted.isEmpty {
+            waitingForResetGroup(count: exhausted.count) {
+                rows(providerAccounts(vm.nonFreeExhaustedAccounts, provider: provider))
+                freeWaitingGroup(provider)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func groupedProviderContent(_ provider: AccountProvider) -> some View {
+        let priority = providerAccounts(vm.priorityAccounts, provider: provider)
+        let active = providerAccounts(vm.normalActiveAccounts, provider: provider)
+        let exhausted = providerAccounts(vm.exhaustedAccounts, provider: provider)
+
+        if !priority.isEmpty {
+            PrioritySeparatorHeader(count: priority.count)
+            workspaceGroups(providerGroups(vm.groupedPriorityAccounts, provider: provider))
+        }
+        if !active.isEmpty {
+            workspaceGroups(providerGroups(vm.groupedNormalActiveAccounts, provider: provider))
+        }
+        if !exhausted.isEmpty {
+            waitingForResetGroup(count: exhausted.count) {
+                workspaceGroups(providerGroups(vm.groupedExhaustedAccounts, provider: provider))
+                freeWaitingGroup(provider)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func workspaceGroups(_ groups: [(String, [Account])]) -> some View {
+        ForEach(groups, id: \.0) { ws, accs in
+            SectionHeader(
+                originalName: ws,
+                displayName: vm.workspaceDisplayName(for: ws),
+                count: accs.count,
+                hasAlias: vm.workspaceHasDisplayAlias(ws),
+                setAlias: { vm.setWorkspaceAlias($0, for: ws) }
+            )
+            rows(accs)
+        }
+    }
+
+    private func providerAccounts(_ accounts: [Account], provider: AccountProvider) -> [Account] {
+        accounts.filter { $0.accountProvider == provider }
+    }
+
+    private func providerGroups(
+        _ groups: [(String, [Account])],
+        provider: AccountProvider
+    ) -> [(String, [Account])] {
+        groups.compactMap { workspace, accounts in
+            let filtered = providerAccounts(accounts, provider: provider)
+            return filtered.isEmpty ? nil : (workspace, filtered)
+        }
+    }
+
     @ViewBuilder
     private func waitingForResetGroup<Content: View>(
+        count: Int,
         @ViewBuilder content: () -> Content
     ) -> some View {
         let isCollapsed = vm.waitingForResetCollapsed && vm.searchText.isEmpty
         ExhaustedSeparatorHeader(
-            count: vm.exhaustedAccounts.count,
+            count: count,
             isCollapsed: isCollapsed,
             toggle: { vm.toggleWaitingForResetCollapsed() }
         )
@@ -127,16 +169,17 @@ struct AccountListView: View {
     }
 
     @ViewBuilder
-    private var freeWaitingGroup: some View {
-        if !vm.freeWaitingAccounts.isEmpty {
+    private func freeWaitingGroup(_ provider: AccountProvider) -> some View {
+        let accounts = providerAccounts(vm.freeWaitingAccounts, provider: provider)
+        if !accounts.isEmpty {
             let isCollapsed = vm.freeWaitingCollapsed && vm.searchText.isEmpty
             FreeWaitingGroupHeader(
-                count: vm.freeWaitingAccounts.count,
+                count: accounts.count,
                 isCollapsed: isCollapsed,
                 toggle: { vm.toggleFreeWaitingCollapsed() }
             )
             if !isCollapsed {
-                rows(vm.freeWaitingAccounts)
+                rows(accounts)
             }
         }
     }
@@ -161,17 +204,20 @@ struct AccountListView: View {
             needsRelogin: vm.needsRelogin(acc),
             isRelogging: vm.isRelogging(acc),
             isReloginBlocked: vm.hasPendingAccountAction && !vm.isRelogging(acc),
-            isSwitchingToCodex: vm.isSwitchingToCodex(acc),
-            isActiveInCodex: vm.isActiveInCodex(acc),
-            showsCodexControls: vm.isCodexInstalled,
-            isSwitchBlocked: vm.hasPendingAccountAction && !vm.isSwitchingToCodex(acc),
+            isSwitchingAccount: vm.isSwitchingAccount(acc),
+            isActiveAccount: vm.isActiveAccount(acc),
+            showsSwitchControls: vm.showsSwitchControls(for: acc),
+            canSwitchAccount: vm.canSwitchAccount(acc),
+            isSwitchBlocked: vm.hasPendingAccountAction && !vm.isSwitchingAccount(acc),
             isRemoving: vm.isRemoving(acc),
             isRemoveBlocked: vm.hasPendingAccountAction && !vm.isRemoving(acc),
+            allowsRemoval: !acc.isClaudeAccount || !vm.isActiveAccount(acc),
+            allowsAlias: true,
             canMoveUp: vm.canMoveAccount(acc, direction: .up),
             canMoveDown: vm.canMoveAccount(acc, direction: .down),
             relogin: { vm.relogin(acc) },
             cancelRelogin: { vm.cancelRelogin() },
-            switchToCodex: { vm.switchCodex(to: acc) },
+            switchAccount: { vm.switchAccount(to: acc) },
             removeAccount: { vm.removeAccount(acc) },
             setAlias: { vm.setAlias($0, for: acc) },
             moveUp: { vm.moveAccount(acc, direction: .up) },
@@ -181,6 +227,29 @@ struct AccountListView: View {
 }
 
 // MARK: - Section Headers
+
+struct ProviderSectionHeader: View {
+    let provider: AccountProvider
+    let count: Int
+
+    var body: some View {
+        HStack(spacing: 7) {
+            ProviderIconView(provider: provider, usesProviderColor: true)
+            Text("\(provider.displayName.uppercased()) (\(count))")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(Theme.providerText(for: provider))
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 29)
+        .background(Theme.providerHeaderSurface(for: provider))
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Theme.providerBorder(for: provider))
+                .frame(height: 0.5)
+        }
+    }
+}
 
 struct SectionHeader: View {
     let originalName: String
@@ -342,15 +411,18 @@ struct AccountRow: View {
         .background(hovered ? Color.primary.opacity(0.06) : .clear)
         .onHover { hovered = $0 }
         .contextMenu {
-            Button("Move Up") {
-                moveUp()
+            if !account.isClaudeAccount {
+                Button("Move Up") {
+                    moveUp()
+                }
+                .disabled(!canMoveUp)
+                Button("Move Down") {
+                    moveDown()
+                }
+                .disabled(!canMoveDown)
+                Divider()
+                Divider()
             }
-            .disabled(!canMoveUp)
-            Button("Move Down") {
-                moveDown()
-            }
-            .disabled(!canMoveDown)
-            Divider()
             Button(account.hasDisplayAlias ? "Edit Alias..." : "Set Alias...") {
                 AccountAliasPrompt.edit(account: account, save: setAlias)
             }
@@ -455,17 +527,20 @@ struct AccountCompactRow: View {
     let needsRelogin: Bool
     let isRelogging: Bool
     let isReloginBlocked: Bool
-    let isSwitchingToCodex: Bool
-    let isActiveInCodex: Bool
-    let showsCodexControls: Bool
+    let isSwitchingAccount: Bool
+    let isActiveAccount: Bool
+    let showsSwitchControls: Bool
+    let canSwitchAccount: Bool
     let isSwitchBlocked: Bool
     let isRemoving: Bool
     let isRemoveBlocked: Bool
+    let allowsRemoval: Bool
+    let allowsAlias: Bool
     let canMoveUp: Bool
     let canMoveDown: Bool
     let relogin: () -> Void
     let cancelRelogin: () -> Void
-    let switchToCodex: () -> Void
+    let switchAccount: () -> Void
     let removeAccount: () -> Void
     let setAlias: (String?) -> Void
     let moveUp: () -> Void
@@ -478,22 +553,22 @@ struct AccountCompactRow: View {
         account.hasDisplayAlias ? 40 : 34
     }
     private var canShowSwapControl: Bool {
-        showsCodexControls
-            && !isActiveInCodex
+        showsSwitchControls
+            && canSwitchAccount
+            && !isActiveAccount
             && !needsRelogin
             && !isRelogging
-            && account.isUsableForCodex
     }
 
     private var rowBackgroundColor: Color {
-        if isActiveInCodex {
+        if isActiveAccount {
             return Theme.activeRowSurface.opacity(hovered ? 1 : 0.78)
         }
         return hovered ? Theme.rowHoverSurface : .clear
     }
 
     private var rowBorderColor: Color {
-        if isActiveInCodex {
+        if isActiveAccount {
             return Theme.activeRowBorder
         }
         return hovered ? Theme.rowHoverBorder : .clear
@@ -546,7 +621,7 @@ struct AccountCompactRow: View {
                 .padding(.vertical, 2)
         }
         .overlay(alignment: .leading) {
-            if isActiveInCodex {
+            if isActiveAccount {
                 Capsule()
                     .fill(Theme.healthyAccent)
                     .frame(width: 2.5, height: max(14, rowHeight - 12))
@@ -557,33 +632,39 @@ struct AccountCompactRow: View {
         .onHover { hovered = $0 }
         .animation(.easeOut(duration: 0.12), value: hovered)
         .contextMenu {
-            Button("Move Up") {
-                moveUp()
-            }
-            .disabled(!canMoveUp)
-            Button("Move Down") {
-                moveDown()
-            }
-            .disabled(!canMoveDown)
-            Divider()
-            Button(account.hasDisplayAlias ? "Edit Alias..." : "Set Alias...") {
-                AccountAliasPrompt.edit(account: account, save: setAlias)
-            }
-            if account.hasDisplayAlias {
-                Button("Clear Alias") {
-                    setAlias(nil)
+            if allowsAlias {
+                if !account.isClaudeAccount {
+                    Button("Move Up") {
+                        moveUp()
+                    }
+                    .disabled(!canMoveUp)
+                    Button("Move Down") {
+                        moveDown()
+                    }
+                    .disabled(!canMoveDown)
+                    Divider()
                 }
+                Button(account.hasDisplayAlias ? "Edit Alias..." : "Set Alias...") {
+                    AccountAliasPrompt.edit(account: account, save: setAlias)
+                }
+                if account.hasDisplayAlias {
+                    Button("Clear Alias") {
+                        setAlias(nil)
+                    }
+                }
+                Divider()
             }
-            Divider()
             Button("Copy email") {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(account.email, forType: .string)
             }
-            Divider()
-            Button("Remove Account...", role: .destructive) {
-                isShowingRemovalConfirmation = true
+            if allowsRemoval {
+                Divider()
+                Button("Remove Account...", role: .destructive) {
+                    isShowingRemovalConfirmation = true
+                }
+                .disabled(isRemoveBlocked)
             }
-            .disabled(isRemoveBlocked)
         }
         .alert("Remove this account?", isPresented: $isShowingRemovalConfirmation) {
             Button("Cancel", role: .cancel) {}
@@ -591,8 +672,15 @@ struct AccountCompactRow: View {
                 removeAccount()
             }
         } message: {
-            Text("\(account.email) will be removed from Codex Vitals. A local backup is created before its saved profile is deleted.")
+            Text(removalConfirmationMessage)
         }
+    }
+
+    private var removalConfirmationMessage: String {
+        if account.isClaudeAccount {
+            return "\(account.email) will be removed from Codex Vitals. The active Claude Code account is not removed."
+        }
+        return "\(account.email) will be removed from Codex Vitals. A local backup is created before its saved profile is deleted."
     }
 
     @ViewBuilder
@@ -630,20 +718,20 @@ struct AccountCompactRow: View {
     @ViewBuilder
     private var leadingAccountControl: some View {
         Group {
-            if showsCodexControls && isActiveInCodex {
-                CodexIconView()
+            if showsSwitchControls && isActiveAccount {
+                ProviderIconView(provider: account.accountProvider)
                     .overlay(alignment: .bottomTrailing) {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.system(size: 7, weight: .bold))
                             .foregroundColor(Theme.healthyAccent)
                             .background(Circle().fill(.black.opacity(0.72)))
                     }
-                    .help("Active in Codex")
+                    .help("Active in \(account.accountProvider.displayName)")
             } else if isRemoving {
                 ProgressView()
                     .controlSize(.mini)
                     .scaleEffect(0.6)
-            } else if hovered {
+            } else if hovered && allowsRemoval {
                 Button {
                     isShowingRemovalConfirmation = true
                 } label: {
@@ -657,7 +745,8 @@ struct AccountCompactRow: View {
                 .help("Remove from list")
                 .accessibilityLabel("Remove \(account.email)")
             } else {
-                Color.clear.frame(width: 5, height: 5)
+                ProviderIconView(provider: account.accountProvider)
+                    .opacity(0.76)
             }
         }
         .frame(width: 16, height: 18)
@@ -738,12 +827,15 @@ struct AccountCompactRow: View {
                 }
                 .buttonStyle(.plain)
                 .help("Cancel")
-            } else if isSwitchingToCodex {
+            } else if isSwitchingAccount {
                 ProgressView()
                     .controlSize(.mini)
                     .scaleEffect(0.65)
             } else if canShowSwapControl {
-                SwitchAccountButton(action: switchToCodex)
+                SwitchAccountButton(
+                    action: switchAccount,
+                    helpText: "Use in \(account.accountProvider.displayName)"
+                )
                     .disabled(isSwitchBlocked)
                     .opacity(hovered ? 1 : 0)
                     .allowsHitTesting(hovered)
@@ -864,6 +956,7 @@ struct ReloginAccountButton: View {
 
 struct SwitchAccountButton: View {
     let action: () -> Void
+    var helpText = "Use account"
     @State private var hovered = false
 
     var body: some View {
@@ -881,11 +974,13 @@ struct SwitchAccountButton: View {
         }
         .buttonStyle(.plain)
         .onHover { hovered = $0 }
-        .help("Use in Codex")
+        .help(helpText)
     }
 }
 
 struct CodexIconView: View {
+    var foregroundColor: Color = .primary.opacity(0.82)
+
     private static let image: NSImage = {
         let codexPNG = Bundle.main.url(forResource: "codex", withExtension: "png")
         let image = codexPNG.flatMap { NSImage(contentsOf: $0) }
@@ -899,8 +994,35 @@ struct CodexIconView: View {
         Image(nsImage: Self.image)
             .resizable()
             .renderingMode(.template)
-            .foregroundStyle(.primary.opacity(0.82))
+            .foregroundStyle(foregroundColor)
             .frame(width: 16, height: 16)
+    }
+}
+
+struct ProviderIconView: View {
+    let provider: AccountProvider
+    var usesProviderColor = false
+
+    var body: some View {
+        Group {
+            switch provider {
+            case .codex:
+                CodexIconView(
+                    foregroundColor: usesProviderColor
+                        ? Theme.providerText(for: provider)
+                        : .primary.opacity(0.82)
+                )
+            case .claude:
+                Image(systemName: "sparkles")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(
+                        usesProviderColor
+                            ? Theme.providerText(for: provider)
+                            : Theme.warningText.opacity(0.9)
+                    )
+                    .frame(width: 16, height: 16)
+            }
+        }
     }
 }
 

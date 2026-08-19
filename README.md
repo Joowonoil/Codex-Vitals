@@ -1,4 +1,4 @@
-# Codex Vitals: Codex account usage and switching on macOS and Windows
+# Codex Vitals: Codex and Claude account usage from the menu bar
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-macOS%2013+-000000?logo=apple" alt="macOS 13+">
@@ -11,11 +11,11 @@
 </p>
 
 <p align="center">
-  An unofficial, local-first app for monitoring Codex usage and switching the active account across Codex CLI and the desktop app.
+  An unofficial, local-first app for monitoring Codex and Claude usage with explicit manual account switching.
 </p>
 
 <p align="center">
-  <a href="https://github.com/Joowonoil/codex-vitals/releases/download/v1.3.3/CodexVitals-1.3.3.dmg"><strong>Download for macOS</strong></a>
+  <a href="https://github.com/Joowonoil/codex-vitals/releases/download/v1.4.0/CodexVitals-1.4.0.dmg"><strong>Download for macOS</strong></a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
   <a href="https://github.com/Joowonoil/codex-vitals/releases/download/windows-v1.0.0/CodexVitals-Windows-1.0.0-Setup.exe"><strong>Download for Windows</strong></a>
 </p>
@@ -26,7 +26,7 @@
 
 ## Overview
 
-**Codex Vitals** helps you monitor OpenAI Codex usage, reset windows, account state, and workspaces from the macOS menu bar or Windows system tray. When you choose an account, the same local Codex sign-in is applied to Codex CLI and the supported desktop app on that platform.
+**Codex Vitals** helps you monitor OpenAI Codex usage, reset windows, account state, and workspaces from the macOS menu bar or Windows system tray. On macOS it also manages Claude Code accounts natively. Codex and Claude remain independently signed in and switch independently.
 
 - View best-effort Codex quota and usage across all your accounts
 - Group accounts by workspace/team
@@ -34,12 +34,13 @@
 - Reorder accounts manually from the row context menu
 - Instantly see which account is active
 - Switch the active account used by Codex CLI and the desktop app with one click
+- View Claude 5-hour and 7-day limits and switch the active Claude Code account on macOS
 - Enable Launch at Login from the settings panel
 - Tune automatic refresh cadence from the settings panel
 - Check for signed app updates and enable automatic installation
 - Identify invalid or deactivated accounts
 
-> **Disclaimer:** Codex Vitals is not affiliated with OpenAI. It does not change Codex/OpenAI limits, share accounts, or automate account cycling. It only helps you view local usage state and manually switch between accounts you control.
+> **Disclaimer:** Codex Vitals is not affiliated with OpenAI or Anthropic. It does not change provider limits, share accounts, or automate account cycling. It only helps you view local usage state and manually switch between accounts you control.
 
 ## Features
 
@@ -48,9 +49,10 @@
 - **Display Aliases** — Local-only account labels for easier scanning while preserving the real email for auth and copy actions
 - **Account Health** — Visual indicators for invalid or deactivated accounts
 - **One-Click Switching** — Apply a saved account to Codex CLI and the supported desktop app
+- **Claude Accounts on macOS** — Add, label, monitor, reconnect, remove, and explicitly switch Claude Code accounts inside Codex Vitals
 - **Passive Auth Mirroring** — Codex-managed token rotations are mirrored back into saved local profiles
 - **Local-First** — All data stays on your machine; no cloud sync
-- **Secure Token Storage** — Sensitive files written with `0600` permissions
+- **Secure Token Storage** — Saved Claude credentials use the macOS Keychain; sensitive Codex files use owner-only permissions
 - **Settings Panel** — Manage Launch at Login, usage refresh, and application updates inside the menu bar popover
 - **Signed Automatic Updates** — Sparkle on macOS and WinSparkle on direct Windows builds verify EdDSA signatures before installation
 - **Network-Friendly Refresh** — Automatic usage refresh defaults to 10 minutes, metadata is cached, and account requests are throttled
@@ -81,12 +83,15 @@ Codex Vitals automatically re-orders your accounts so the best one to use right 
 - **macOS:** macOS 13 or newer; ChatGPT installed as `ChatGPT.app`, or the legacy `Codex.app`
 - **Windows:** 64-bit Windows 10 or 11; Codex Desktop for desktop-session switching
 - A Codex CLI installation and accounts you control
+- **Optional Claude support on macOS:** Claude Code installed and available to your user account
 
 ## Installation
 
 ### macOS
 
 Download the latest `.pkg` from [Releases](../../releases), double-click to run the installer, and Codex Vitals will be installed to `/Applications`.
+
+To add a Claude account, open Codex Vitals, choose the account-add button, and select **Add Claude Account**. The app starts the official `claude auth login` browser flow, then stores that account's saved credential in its own macOS Keychain service. Switching remains a manual action; Codex Vitals does not automatically rotate accounts.
 
 ### Windows
 
@@ -136,9 +141,12 @@ Codex Vitals is local-first and never syncs tokens or exposes a remote service.
 | `~/Library/Application Support/CodexVitals/accounts-snapshot.json` | Usage snapshots |
 | `~/Library/Application Support/CodexVitals/team-name-cache.json` | Team name cache |
 | `~/Library/Application Support/CodexVitals/backups/<timestamp>-remove-account/` | Backups before removal |
+| macOS Keychain: `com.ramterstudio.CodexVitals.Claude` | Saved Claude credentials |
+| `~/Library/Application Support/CodexVitals/claude-accounts.json` | Non-secret Claude profile metadata and aliases |
+| `~/.claude.json` and Keychain: `Claude Code-credentials` | Active Claude Code account state; Codex Vitals changes only the active account metadata and credential during a manual switch |
 | `%APPDATA%\CodexVitals\` | Windows accounts, snapshots, settings, and local backups |
 
-All sensitive files are written with `0600` permissions. Removal actions create backups before deleting profile data.
+All sensitive files are written with `0600` permissions. Codex profile removal creates a local backup before deleting profile data; Claude account removal deletes only an inactive saved profile from the app Keychain and metadata store.
 
 ### Network Calls
 
@@ -152,6 +160,11 @@ The app uses your local Codex/OpenAI auth tokens to query:
 - `https://ramterstudio.com/codex-vitals/windows-appcast.xml` for direct Windows update metadata
 - GitHub Releases for signed application update downloads
 
+For Claude support on macOS, the app uses the official Claude Code CLI for interactive browser login, Anthropic's OAuth usage endpoint for quota reads, and Anthropic's OAuth token endpoint to refresh expiring inactive saved accounts. Manual switching updates Claude Code's local active credential and only the `oauthAccount` field in `~/.claude.json`, then verifies the result or rolls it back.
+
+- `https://api.anthropic.com/api/oauth/usage`
+- `https://platform.claude.com/v1/oauth/token`
+
 These are not official public APIs and may change without notice.
 
 Automatic usage refresh defaults to 10 minutes. Account metadata is cached for 6 hours during automatic refreshes, while manual refresh always requests fresh usage and metadata.
@@ -162,6 +175,8 @@ Application update checks are separate from account refreshes. Sparkle and WinSp
 
 - Bearer tokens are never logged or transmitted to third parties
 - OAuth callback server binds only to `localhost:1455` and closes immediately after login
+- Claude browser login launches only the fixed official `claude auth login --claudeai` command without a shell
+- Claude credentials are never placed in process arguments, metadata files, snapshots, or logs
 - See [SECURITY.md](SECURITY.md) for the full threat model
 
 ## FAQ
@@ -190,6 +205,10 @@ No. Session history remains stored locally, so earlier conversations can be reop
 
 No. Codex Vitals is local-first and does not sync tokens, account data, or usage snapshots to a third-party service.
 
+### How does Claude support work?
+
+On macOS, Codex Vitals imports the currently active Claude Code account, stores saved account credentials in an app-specific Keychain service, and queries best-effort 5-hour and 7-day usage. Adding or reconnecting uses Claude Code's official browser login. Switching is explicit and transactional, affects Claude Code only, and preserves unrelated `~/.claude.json` settings. Claude support is not yet included in the Windows build.
+
 ## Contributing
 
 Issues and pull requests are welcome. Please keep changes local-first, avoid token logging, and run the platform-specific tests before opening a PR.
@@ -200,4 +219,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 [MIT](LICENSE)
 
-The distributed apps include Sparkle or WinSparkle under their bundled license notices.
+The distributed apps include Sparkle or WinSparkle under their bundled license notices. Claude integration attribution is included in [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt).

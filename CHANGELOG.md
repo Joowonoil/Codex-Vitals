@@ -2,6 +2,14 @@
 
 All notable changes to Codex Vitals will be documented here.
 
+## 1.4.0 - 2026-08-20
+
+- Added native Claude Code usage monitoring and manual account switching on macOS.
+- Grouped Codex and Claude accounts into compact provider sections with subtle purple and orange glass tints.
+- Added Claude account login, reauthentication, local aliases, removal, and active-account status.
+- Stored saved Claude credentials in the macOS Keychain and preserved Claude Code settings during transactional switches.
+- Added best-effort 5-hour and 7-day Claude usage windows with inactive-token refresh.
+
 ## 1.3.3 - 2026-08-17
 
 - Added proactive OAuth refresh for inactive captured Codex profiles before access tokens expire.

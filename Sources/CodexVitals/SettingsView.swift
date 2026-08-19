@@ -19,7 +19,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(AppInfo.name)
                         .font(.system(size: 17, weight: .semibold))
-                    Text("Menu bar usage vitals for Codex")
+                    Text("Menu bar usage vitals for Codex and Claude")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                 }

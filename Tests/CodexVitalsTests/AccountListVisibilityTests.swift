@@ -297,6 +297,18 @@ final class AccountListVisibilityTests: XCTestCase {
     }
 
     @MainActor
+    func testProviderGroupingKeepsCodexBeforeClaude() {
+        let codex = makeAccount(id: "codex@example.com|acc", email: "codex@example.com", hasError: false)
+        var claude = makeAccount(id: "claude-native:1", email: "claude@example.com", hasError: false)
+        claude.provider = .claude
+
+        let sections = UsageViewModel.groupByProvider([claude, codex])
+
+        XCTAssertEqual(sections.map(\.provider), [.codex, .claude])
+        XCTAssertEqual(sections.map { $0.accounts.map(\.id) }, [[codex.id], [claude.id]])
+    }
+
+    @MainActor
     func testWaitingForResetSortsPaidBeforeFreeThenSoonestReset() {
         let freeSoon = makeAccount(
             id: "free-soon@example.com|acc",

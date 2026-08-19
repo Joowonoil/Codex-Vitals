@@ -4,17 +4,22 @@ final class AuthRefreshGuardTests: XCTestCase {
     func testRefreshGrantIsScopedToDedicatedService() throws {
         let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
         let serviceURL = root.appendingPathComponent("Sources/CodexVitals/CodexTokenRefreshService.swift")
+        let claudeServiceURL = root.appendingPathComponent("Sources/CodexVitals/ClaudeUsageClient.swift")
         let service = try String(contentsOf: serviceURL, encoding: .utf8)
+        let claudeService = try String(contentsOf: claudeServiceURL, encoding: .utf8)
         let coordinatorURL = root.appendingPathComponent("Sources/CodexVitals/CodexAuthOperationCoordinator.swift")
         let coordinator = try String(contentsOf: coordinatorURL, encoding: .utf8)
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: serviceURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: claudeServiceURL.path))
         XCTAssertTrue(service.contains(#""grant_type": "refresh_token""#))
+        XCTAssertTrue(claudeService.contains(#""grant_type": "refresh_token""#))
         XCTAssertTrue(service.contains("activeAuth(for:"))
         XCTAssertTrue(service.contains("profileGate.withExclusiveAccess"))
         XCTAssertTrue(coordinator.contains("CodexRefreshPermitPool(limit: 2)"))
 
-        for file in try productionSwiftFiles() where file != serviceURL {
+        let dedicatedServices = Set([serviceURL, claudeServiceURL])
+        for file in try productionSwiftFiles() where !dedicatedServices.contains(file) {
             let text = try String(contentsOf: file, encoding: .utf8)
             XCTAssertFalse(
                 text.contains(#""grant_type": "refresh_token""#),

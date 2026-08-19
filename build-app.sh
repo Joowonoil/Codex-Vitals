@@ -59,6 +59,7 @@ cp "${ROOT}/Support/Info.plist" "${OUT}/Contents/Info.plist"
 cp "$ICNS" "${OUT}/Contents/Resources/AppIcon.icns"
 cp "${ROOT}/Support/codex.png" "${OUT}/Contents/Resources/codex.png"
 cp "${ROOT}/Support/RamterStudioLogo.png" "${OUT}/Contents/Resources/RamterStudioLogo.png"
+cp "${ROOT}/THIRD-PARTY-NOTICES.txt" "${OUT}/Contents/Resources/THIRD-PARTY-NOTICES.txt"
 if [[ -f "${ROOT}/.build/checkouts/Sparkle/LICENSE" ]]; then
 	cp "${ROOT}/.build/checkouts/Sparkle/LICENSE" "${OUT}/Contents/Resources/Sparkle-LICENSE.txt"
 fi

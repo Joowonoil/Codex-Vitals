@@ -1,5 +1,6 @@
-import Foundation
+import AppKit
 import Combine
+import Foundation
 
 enum AccountMoveDirection {
     case up
@@ -15,6 +16,7 @@ final class UsageViewModel: ObservableObject {
     @Published var accounts: [Account] = []
     @Published var isLoading = false
     @Published var isAddingAccount = false
+    @Published var addingAccountProvider: AccountProvider?
     @Published var reloggingAccountID: String?
     @Published var switchingAccountID: String?
     @Published var removingAccountID: String?
@@ -46,6 +48,7 @@ final class UsageViewModel: ObservableObject {
     // MARK: - Internals
 
     private let service = UsageService()
+    private let claudeService = ClaudeAccountService()
     private let captureService = CodexAccountCaptureService()
     private let switchService = CodexAccountSwitchService()
     private let removalService = LocalAccountRemovalService()
@@ -66,7 +69,7 @@ final class UsageViewModel: ObservableObject {
         UserDefaults.standard.removeObject(forKey: "accountInformationMode")
         usesManualAccountOrder = UserDefaults.standard.bool(forKey: manualAccountOrderKey)
         listDensity = .compact
-        if AccountProfileStore.hasProfiles, let snap = AccountSnapshotStore.load() {
+        if let snap = AccountSnapshotStore.load() {
             accounts = snap.accounts
             lastRefresh = snap.lastRefresh
         }
@@ -213,6 +216,13 @@ final class UsageViewModel: ObservableObject {
         return order.map { ($0, map[$0]!) }
     }
 
+    static func groupByProvider(_ accounts: [Account]) -> [(provider: AccountProvider, accounts: [Account])] {
+        AccountProvider.allCases.compactMap { provider in
+            let matching = accounts.filter { $0.accountProvider == provider }
+            return matching.isEmpty ? nil : (provider, matching)
+        }
+    }
+
     var errorsCount: Int { Self.errorCount(in: accounts) }
 
     static func errorCount(in accounts: [Account]) -> Int {
@@ -269,8 +279,13 @@ final class UsageViewModel: ObservableObject {
         refreshCodexAvailability()
 
         Task {
-            let result = await service.loadAll(forceMetadataRefresh: forceMetadataRefresh)
-            accounts = result
+            async let codexAccounts = service.loadAll(forceMetadataRefresh: forceMetadataRefresh)
+            async let claudeResult = claudeService.loadAccounts()
+            let (loadedCodexAccounts, loadedClaudeResult) = await (codexAccounts, claudeResult)
+            accounts = loadedCodexAccounts + loadedClaudeResult.accounts
+            if let claudeError = loadedClaudeResult.errorMessage {
+                accountActionError = claudeError
+            }
             let now = Date()
             lastRefresh = now
             AccountSnapshotStore.save(accounts: accounts, lastRefresh: now)
@@ -302,7 +317,14 @@ final class UsageViewModel: ObservableObject {
     }
 
     func needsRelogin(_ account: Account) -> Bool {
-        !codexLoginStatus.contains(account)
+        if account.isClaudeAccount {
+            return [
+                ClaudeAccountStatus.tokenExpired.rawValue,
+                ClaudeAccountStatus.reloginRequired.rawValue,
+                ClaudeAccountStatus.noCredentials.rawValue,
+            ].contains(account.providerStatus)
+        }
+        return !codexLoginStatus.contains(account)
             || UsageService.requiresRelogin(account.errorMessage)
     }
 
@@ -310,17 +332,29 @@ final class UsageViewModel: ObservableObject {
         reloggingAccountID == account.id
     }
 
-    func isSwitchingToCodex(_ account: Account) -> Bool {
+    func isSwitchingAccount(_ account: Account) -> Bool {
         switchingAccountID == account.id
     }
 
-    func isActiveInCodex(_ account: Account) -> Bool {
+    func isActiveAccount(_ account: Account) -> Bool {
+        if account.isClaudeAccount {
+            return account.providerIsActive == true
+        }
         guard isCodexInstalled else { return false }
         guard let activeCodexProfileKey,
               let profileKey = account.profileKey else {
             return false
         }
         return activeCodexProfileKey == profileKey
+    }
+
+    func showsSwitchControls(for account: Account) -> Bool {
+        account.isClaudeAccount ? account.providerProfileID != nil : isCodexInstalled
+    }
+
+    func canSwitchAccount(_ account: Account) -> Bool {
+        guard showsSwitchControls(for: account) else { return false }
+        return account.canSwitchProviderAccount
     }
 
     var hasPendingAccountAction: Bool {
@@ -331,10 +365,15 @@ final class UsageViewModel: ObservableObject {
     }
 
     func addAccount() {
+        addCodexAccount()
+    }
+
+    func addCodexAccount() {
         guard !hasPendingAccountAction else { return }
         pendingDebouncedRefreshTask?.cancel()
         pendingDebouncedRefreshTask = nil
         isAddingAccount = true
+        addingAccountProvider = .codex
         accountActionError = nil
 
         reloginTask = Task {
@@ -343,16 +382,50 @@ final class UsageViewModel: ObservableObject {
                 guard !Task.isCancelled else { return }
                 codexLoginStatus = CodexLoginStatusStore.load()
                 isAddingAccount = false
+                addingAccountProvider = nil
                 reloginTask = nil
                 schedulePostCaptureRefresh()
             } catch is CancellationError {
                 isAddingAccount = false
+                addingAccountProvider = nil
                 reloginTask = nil
                 accountActionError = nil
             } catch {
                 isAddingAccount = false
+                addingAccountProvider = nil
                 reloginTask = nil
                 accountActionError = error.localizedDescription
+            }
+        }
+    }
+
+    func addClaudeAccount() {
+        guard !hasPendingAccountAction else { return }
+        pendingDebouncedRefreshTask?.cancel()
+        pendingDebouncedRefreshTask = nil
+        isAddingAccount = true
+        addingAccountProvider = .claude
+        accountActionError = nil
+
+        reloginTask = Task {
+            do {
+                _ = try await claudeService.addAccount()
+                guard !Task.isCancelled else { return }
+                isAddingAccount = false
+                addingAccountProvider = nil
+                reloginTask = nil
+                refresh(forceMetadataRefresh: true)
+            } catch is CancellationError {
+                isAddingAccount = false
+                addingAccountProvider = nil
+                reloginTask = nil
+                accountActionError = nil
+            } catch {
+                isAddingAccount = false
+                addingAccountProvider = nil
+                reloginTask = nil
+                accountActionError = error.localizedDescription
+                refresh()
             }
         }
     }
@@ -366,12 +439,25 @@ final class UsageViewModel: ObservableObject {
 
         reloginTask = Task {
             do {
-                _ = try await captureService.captureAccount(for: account)
+                if account.isClaudeAccount {
+                    guard let profileID = account.providerProfileID else {
+                        throw ClaudeNativeError.profileMissing
+                    }
+                    _ = try await claudeService.reauthenticate(profileID: profileID)
+                } else {
+                    _ = try await captureService.captureAccount(for: account)
+                }
                 guard !Task.isCancelled else { return }
-                codexLoginStatus = CodexLoginStatusStore.load()
+                if !account.isClaudeAccount {
+                    codexLoginStatus = CodexLoginStatusStore.load()
+                }
                 reloggingAccountID = nil
                 reloginTask = nil
-                schedulePostCaptureRefresh()
+                if account.isClaudeAccount {
+                    refresh(forceMetadataRefresh: true)
+                } else {
+                    schedulePostCaptureRefresh()
+                }
             } catch is CancellationError {
                 reloggingAccountID = nil
                 reloginTask = nil
@@ -386,13 +472,34 @@ final class UsageViewModel: ObservableObject {
 
     func cancelRelogin() {
         reloginTask?.cancel()
+        Task { await claudeService.cancelLogin() }
         reloginTask = nil
         reloggingAccountID = nil
         isAddingAccount = false
+        addingAccountProvider = nil
         accountActionError = nil
     }
 
     func setAlias(_ alias: String?, for account: Account) {
+        if account.isClaudeAccount {
+            guard let profileID = account.providerProfileID else {
+                accountActionError = "Claude account profile is missing."
+                return
+            }
+            Task {
+                do {
+                    let normalizedAlias = Account.normalizedAlias(alias)
+                    try await claudeService.updateAlias(profileID: profileID, alias: normalizedAlias)
+                    if let index = accounts.firstIndex(where: { $0.id == account.id }) {
+                        accounts[index].alias = normalizedAlias
+                        AccountSnapshotStore.save(accounts: accounts, lastRefresh: lastRefresh)
+                    }
+                } catch {
+                    accountActionError = error.localizedDescription
+                }
+            }
+            return
+        }
         guard let profileKey = account.profileKey else {
             accountActionError = "Account has no local profile to label."
             return
@@ -503,18 +610,33 @@ final class UsageViewModel: ObservableObject {
         }
     }
 
-    func switchCodex(to account: Account) {
-        guard isCodexInstalled, !hasPendingAccountAction, !needsRelogin(account) else { return }
+    func switchAccount(to account: Account) {
+        guard showsSwitchControls(for: account),
+              canSwitchAccount(account),
+              !hasPendingAccountAction,
+              !needsRelogin(account) else { return }
         switchingAccountID = account.id
         accountActionError = nil
 
-        switchTask = Task.detached { [switchService] in
+        switchTask = Task.detached { [switchService, claudeService] in
             do {
-                let result = try await switchService.switchToAccount(account)
+                if account.isClaudeAccount {
+                    guard let profileID = account.providerProfileID else {
+                        throw ClaudeNativeError.profileMissing
+                    }
+                    try await claudeService.switchAccount(profileID: profileID)
+                } else {
+                    let result = try await switchService.switchToAccount(account)
+                    await MainActor.run {
+                        self.activeCodexProfileKey = result.sourceProfileKey
+                    }
+                }
                 await MainActor.run {
-                    self.activeCodexProfileKey = result.sourceProfileKey
                     self.switchingAccountID = nil
                     self.switchTask = nil
+                    if account.isClaudeAccount {
+                        self.refresh()
+                    }
                 }
             } catch {
                 await MainActor.run {
@@ -534,6 +656,23 @@ final class UsageViewModel: ObservableObject {
         guard !hasPendingAccountAction else { return }
         removingAccountID = account.id
         accountActionError = nil
+
+        if account.isClaudeAccount {
+            Task {
+                do {
+                    guard let profileID = account.providerProfileID else {
+                        throw ClaudeNativeError.profileMissing
+                    }
+                    try await claudeService.removeAccount(profileID: profileID)
+                    removingAccountID = nil
+                    refresh()
+                } catch {
+                    removingAccountID = nil
+                    accountActionError = error.localizedDescription
+                }
+            }
+            return
+        }
 
         Task.detached { [removalService] in
             do {

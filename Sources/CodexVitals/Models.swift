@@ -1,9 +1,21 @@
 import AppKit
 import SwiftUI
 
+enum AccountProvider: String, Codable, CaseIterable, Sendable {
+    case codex
+    case claude
+
+    var displayName: String {
+        switch self {
+        case .codex: return "Codex"
+        case .claude: return "Claude"
+        }
+    }
+}
+
 // MARK: - Quota Window
 
-struct QuotaWindow: Equatable, Codable {
+struct QuotaWindow: Equatable, Codable, Sendable {
     enum Kind: Equatable {
         case fiveHour
         case weekly
@@ -66,7 +78,7 @@ struct QuotaWindow: Equatable, Codable {
 
 // MARK: - Account
 
-struct Account: Identifiable, Equatable, Codable {
+struct Account: Identifiable, Equatable, Codable, Sendable {
     let id: String          // dedup key: "email|accountId"
     let profileKey: String?
     let email: String
@@ -82,6 +94,19 @@ struct Account: Identifiable, Equatable, Codable {
     var planRenewalDate: Date?
     let hasError: Bool
     let errorMessage: String?
+    var provider: AccountProvider? = nil
+    var providerAccountNumber: Int? = nil
+    var providerProfileID: String? = nil
+    var providerIsActive: Bool? = nil
+    var providerStatus: String? = nil
+
+    var accountProvider: AccountProvider {
+        provider ?? .codex
+    }
+
+    var isClaudeAccount: Bool {
+        accountProvider == .claude
+    }
 
     var emailPrefix: String {
         email.components(separatedBy: "@").first ?? email
@@ -100,7 +125,8 @@ struct Account: Identifiable, Equatable, Codable {
     }
 
     var displayPlanName: String? {
-        PlanDisplayFormatter.badgeText(for: plan)
+        guard !isClaudeAccount else { return nil }
+        return PlanDisplayFormatter.badgeText(for: plan)
     }
 
     var displayWorkspaceName: String {
@@ -112,7 +138,7 @@ struct Account: Identifiable, Equatable, Codable {
     }
 
     var searchText: String {
-        [displayAlias, email, displayWorkspaceName, workspace, plan]
+        [displayAlias, email, displayWorkspaceName, workspace, plan, accountProvider.displayName]
             .compactMap { $0 }
             .joined(separator: " ")
     }
@@ -208,6 +234,18 @@ struct Account: Identifiable, Equatable, Codable {
 
     var isUsableForCodex: Bool {
         !hasError && !usageWindows.isEmpty && usageWindows.allSatisfy { !$0.isExhausted }
+    }
+
+    var canSwitchProviderAccount: Bool {
+        guard isClaudeAccount else { return isUsableForCodex }
+        switch providerStatus {
+        case "ok":
+            return isUsableForCodex
+        case "unavailable":
+            return true
+        default:
+            return false
+        }
     }
 
     /// Hours until weekly window resets (from API `reset_after_seconds`).
@@ -347,6 +385,42 @@ struct Theme {
     static let metricBorder = Color(lightHex: "15000000", darkHex: "2BFFFFFF")
     static let warningSurface = Color(lightHex: "14FF9F0A", darkHex: "1FFF9F0A")
     static let warningBorder = Color(lightHex: "33914C00", darkHex: "38FF9F0A")
+
+    static func providerSectionSurface(for provider: AccountProvider) -> Color {
+        switch provider {
+        case .codex:
+            return Color(lightHex: "107D6AE7", darkHex: "147D6AE7")
+        case .claude:
+            return Color(lightHex: "10D97757", darkHex: "14D97757")
+        }
+    }
+
+    static func providerHeaderSurface(for provider: AccountProvider) -> Color {
+        switch provider {
+        case .codex:
+            return Color(lightHex: "187D6AE7", darkHex: "227D6AE7")
+        case .claude:
+            return Color(lightHex: "18D97757", darkHex: "22D97757")
+        }
+    }
+
+    static func providerBorder(for provider: AccountProvider) -> Color {
+        switch provider {
+        case .codex:
+            return Color(lightHex: "287D6AE7", darkHex: "387D6AE7")
+        case .claude:
+            return Color(lightHex: "28D97757", darkHex: "38D97757")
+        }
+    }
+
+    static func providerText(for provider: AccountProvider) -> Color {
+        switch provider {
+        case .codex:
+            return Color(lightHex: "6752C7", darkHex: "B4A9FF")
+        case .claude:
+            return Color(lightHex: "A84F34", darkHex: "F3A184")
+        }
+    }
 
     /// Bar fill color based on % free remaining.
     static func barColor(for pct: Double) -> Color {

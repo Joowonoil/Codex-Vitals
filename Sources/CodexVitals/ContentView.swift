@@ -99,13 +99,17 @@ struct ContentView: View {
                     .font(.system(size: 32)).foregroundColor(.secondary)
                 Text("No accounts found")
                     .font(.system(size: 14)).foregroundColor(.secondary)
-                Button {
-                    viewModel.addAccount()
+                Menu {
+                    Button("Add Codex Account", systemImage: "command") {
+                        viewModel.addCodexAccount()
+                    }
+                    Button("Add Claude Account", systemImage: "sparkles") {
+                        viewModel.addClaudeAccount()
+                    }
                 } label: {
                     Label("Add account", systemImage: "person.badge.plus")
                         .font(.system(size: 12, weight: .semibold))
                 }
-                .buttonStyle(.borderedProminent)
                 .controlSize(.small)
                 .disabled(viewModel.hasPendingAccountAction)
             }
@@ -179,16 +183,19 @@ struct HeaderView: View {
                         .foregroundColor(shouldShowSearchField ? .primary : .secondary)
                 }
 
-                HeaderActionButton(
-                    action: toggleAccountCapture,
-                    isSelected: vm.isAddingAccount,
-                    isDisabled: vm.hasPendingAccountAction && !vm.isAddingAccount,
-                    helpText: vm.isAddingAccount ? "Cancel" : "Add account",
-                    accessibilityText: vm.isAddingAccount ? "Cancel adding account" : "Add account"
-                ) {
-                    Image(systemName: vm.isAddingAccount ? "xmark.circle.fill" : "person.badge.plus")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(vm.isAddingAccount ? .secondary : Theme.healthyAccent)
+                if vm.isAddingAccount {
+                    HeaderActionButton(
+                        action: { vm.cancelRelogin() },
+                        isSelected: true,
+                        helpText: "Cancel adding account",
+                        accessibilityText: "Cancel adding account"
+                    ) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.secondary)
+                    }
+                } else {
+                    HeaderAccountMenu(vm: vm)
                 }
 
                 HeaderActionButton(
@@ -271,14 +278,6 @@ struct HeaderView: View {
         }
     }
 
-    private func toggleAccountCapture() {
-        if vm.isAddingAccount {
-            vm.cancelRelogin()
-        } else {
-            vm.addAccount()
-        }
-    }
-
     private var shouldShowSearchField: Bool {
         isSearchVisible || !vm.searchText.isEmpty
     }
@@ -351,6 +350,45 @@ struct HeaderView: View {
             guard !Task.isCancelled else { return }
             showsRefreshSuccess = false
         }
+    }
+}
+
+private struct HeaderAccountMenu: View {
+    @ObservedObject var vm: UsageViewModel
+    @State private var isHovered = false
+
+    var body: some View {
+        Menu {
+            Button("Add Codex Account", systemImage: "command") {
+                vm.addCodexAccount()
+            }
+            Button("Add Claude Account", systemImage: "sparkles") {
+                vm.addClaudeAccount()
+            }
+        } label: {
+            Image(systemName: "person.badge.plus")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(Theme.healthyAccent)
+                .frame(width: 26, height: 24)
+                .background {
+                    RoundedRectangle(cornerRadius: Theme.controlCornerRadius, style: .continuous)
+                        .fill(isHovered ? Theme.controlHoverSurface : .clear)
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: Theme.controlCornerRadius, style: .continuous)
+                        .stroke(isHovered ? Theme.controlBorder : .clear, lineWidth: 0.5)
+                }
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .disabled(vm.hasPendingAccountAction)
+        .opacity(vm.hasPendingAccountAction ? 0.55 : 1)
+        .scaleEffect(isHovered && !vm.hasPendingAccountAction ? 1.035 : 1)
+        .animation(.easeOut(duration: 0.12), value: isHovered)
+        .onHover { isHovered = $0 }
+        .help("Add account")
+        .accessibilityLabel("Add Codex or Claude account")
     }
 }
 
