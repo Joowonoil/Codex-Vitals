@@ -214,6 +214,8 @@ On macOS, Codex Vitals imports the currently active Claude Code account, stores 
 
 Issues and pull requests are welcome. Please keep changes local-first, avoid token logging, and run the platform-specific tests before opening a PR.
 
+Codex Vitals is maintainer-led and provided on a best-effort basis. Response times and the inclusion of proposed changes are not guaranteed.
+
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
