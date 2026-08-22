@@ -40,7 +40,7 @@ from .update_manager import UpdateManager, UpdateManagerError
 APP_DISPLAY_NAME = "Codex Vitals"
 APP_INTERNAL_NAME = "CodexVitals"
 HOMEPAGE_URL = "https://ramterstudio.com/codex-vitals/"
-GITHUB_URL = "https://github.com/Joowonoil/codex-vitals"
+GITHUB_URL = "https://github.com/Joowonoil/Codex-Vitals"
 FEEDBACK_URL = "mailto:ramterstudio@gmail.com?subject=Codex%20Vitals%20Feedback"
 RAMTER_STUDIO_URL = "https://ramterstudio.com"
 

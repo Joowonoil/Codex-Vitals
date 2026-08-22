@@ -57,7 +57,7 @@ final class UsageViewModel: ObservableObject {
     private let captureService = CodexAccountCaptureService()
     private let switchService = CodexAccountSwitchService()
     private let removalService = LocalAccountRemovalService()
-    private let resetNotificationService = UsageResetNotificationService()
+    private let resetNotificationService: any UsageResetNotifying
     private var refreshTimer: Timer?
     private var reloginTask: Task<Void, Never>?
     private var switchTask: Task<Void, Never>?
@@ -70,7 +70,8 @@ final class UsageViewModel: ObservableObject {
 
     // MARK: - Init
 
-    init() {
+    init(resetNotificationService: any UsageResetNotifying = UsageResetNotificationService()) {
+        self.resetNotificationService = resetNotificationService
         if UserDefaults.standard.object(forKey: "groupByWorkspace") != nil {
             groupByWorkspace = UserDefaults.standard.bool(forKey: "groupByWorkspace")
         }

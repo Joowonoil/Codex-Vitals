@@ -65,8 +65,8 @@ if (-not $signatureMatch.Success) {
 $signature = $signatureMatch.Groups[1].Value
 $length = $signatureMatch.Groups[2].Value
 $releaseTag = "windows-v$Version"
-$downloadUrl = "https://github.com/Joowonoil/codex-vitals/releases/download/$releaseTag/$installerName"
-$releaseNotesUrl = "https://github.com/Joowonoil/codex-vitals/releases/tag/$releaseTag"
+$downloadUrl = "https://github.com/Joowonoil/Codex-Vitals/releases/download/$releaseTag/$installerName"
+$releaseNotesUrl = "https://github.com/Joowonoil/Codex-Vitals/releases/tag/$releaseTag"
 $publicationDate = [DateTime]::UtcNow.ToString("r", [Globalization.CultureInfo]::InvariantCulture)
 
 @"

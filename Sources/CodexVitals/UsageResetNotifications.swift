@@ -1,6 +1,12 @@
 import Foundation
 import UserNotifications
 
+protocol UsageResetNotifying: AnyObject {
+    func requestAuthorization() async -> Bool
+    func authorizationStatus() async -> UNAuthorizationStatus
+    func deliver(events: [UsageResetEvent]) async
+}
+
 struct UsageResetEvent: Equatable, Sendable {
     let accountKey: String
     let provider: AccountProvider
@@ -114,7 +120,7 @@ enum UsageResetNotificationSummary {
     }
 }
 
-final class UsageResetNotificationService: NSObject, UNUserNotificationCenterDelegate, @unchecked Sendable {
+final class UsageResetNotificationService: NSObject, UsageResetNotifying, UNUserNotificationCenterDelegate, @unchecked Sendable {
     private let center: UNUserNotificationCenter
 
     override init() {

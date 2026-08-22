@@ -39,9 +39,9 @@ if [[ -n "$RELEASE_NOTES" ]]; then
 fi
 
 "$GENERATOR" \
-    --download-url-prefix "https://github.com/Joowonoil/codex-vitals/releases/download/v${VERSION}/" \
+    --download-url-prefix "https://github.com/Joowonoil/Codex-Vitals/releases/download/v${VERSION}/" \
     --link "https://ramterstudio.com/codex-vitals/" \
-    --full-release-notes-url "https://github.com/Joowonoil/codex-vitals/releases" \
+    --full-release-notes-url "https://github.com/Joowonoil/Codex-Vitals/releases" \
     --embed-release-notes \
     --maximum-versions 5 \
     "$STAGING"

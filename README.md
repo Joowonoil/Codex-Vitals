@@ -4,8 +4,8 @@
   <img src="https://img.shields.io/badge/platform-macOS%2013+-000000?logo=apple" alt="macOS 13+">
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078D4?logo=windows11" alt="Windows 10/11">
   <img src="https://img.shields.io/badge/swift-5.9-F05138?logo=swift" alt="Swift 5.9">
-  <a href="https://github.com/Joowonoil/codex-vitals/releases">
-    <img src="https://img.shields.io/github/downloads/Joowonoil/codex-vitals/total?label=downloads&logo=github" alt="GitHub release downloads">
+  <a href="https://github.com/Joowonoil/Codex-Vitals/releases">
+    <img src="https://img.shields.io/github/downloads/Joowonoil/Codex-Vitals/total?label=downloads&logo=github" alt="GitHub release downloads">
   </a>
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="License: MIT">
 </p>
@@ -15,9 +15,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Joowonoil/codex-vitals/releases/download/v1.4.2/CodexVitals-1.4.2.dmg"><strong>Download for macOS</strong></a>
+  <a href="https://github.com/Joowonoil/Codex-Vitals/releases/download/v1.4.2/CodexVitals-1.4.2.dmg"><strong>Download for macOS</strong></a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
-  <a href="https://github.com/Joowonoil/codex-vitals/releases/download/windows-v1.0.0/CodexVitals-Windows-1.0.0-Setup.exe"><strong>Download for Windows</strong></a>
+  <a href="https://github.com/Joowonoil/Codex-Vitals/releases/download/windows-v1.0.0/CodexVitals-Windows-1.0.0-Setup.exe"><strong>Download for Windows</strong></a>
 </p>
 
 <p align="center">
@@ -96,12 +96,12 @@ To add a Claude account, open Codex Vitals, choose the account-add button, and s
 
 ### Windows
 
-Download [`CodexVitals-Windows-1.0.0-Setup.exe`](https://github.com/Joowonoil/codex-vitals/releases/download/windows-v1.0.0/CodexVitals-Windows-1.0.0-Setup.exe) and run it. The current direct installer is not Authenticode-signed, so Microsoft Defender SmartScreen may show a warning. Choose **More info** and **Run anyway** only for the installer downloaded from this repository or [ramterstudio.com](https://ramterstudio.com/codex-vitals/).
+Download [`CodexVitals-Windows-1.0.0-Setup.exe`](https://github.com/Joowonoil/Codex-Vitals/releases/download/windows-v1.0.0/CodexVitals-Windows-1.0.0-Setup.exe) and run it. The current direct installer is not Authenticode-signed, so Microsoft Defender SmartScreen may show a warning. Choose **More info** and **Run anyway** only for the installer downloaded from this repository or [ramterstudio.com](https://ramterstudio.com/codex-vitals/).
 
 ### Build From Source
 
 ```bash
-git clone https://github.com/Joowonoil/codex-vitals.git
+git clone https://github.com/Joowonoil/Codex-Vitals.git
 cd codex-vitals
 swift test
 swift build
