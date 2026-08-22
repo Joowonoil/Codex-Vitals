@@ -3,6 +3,52 @@ import XCTest
 @testable import CodexVitals
 
 final class ClaudeNativeServiceTests: XCTestCase {
+    func testUsageResponseParsesFableFromScopedWeeklyLimits() throws {
+        let data = Data(#"""
+        {
+          "five_hour": { "utilization": 100, "resets_at": "2026-08-22T13:00:00Z" },
+          "seven_day": { "utilization": 21, "resets_at": "2026-08-29T00:00:00Z" },
+          "limits": [
+            {
+              "kind": "weekly_scoped",
+              "percent": 12,
+              "resets_at": "2026-08-29T00:00:00Z",
+              "scope": { "model": { "display_name": "Opus" } }
+            },
+            {
+              "kind": "weekly_scoped",
+              "percent": 40,
+              "resets_at": "2026-08-29T00:00:00Z",
+              "scope": { "model": { "display_name": "Fable 5" } }
+            }
+          ]
+        }
+        """#.utf8)
+
+        let response = try JSONDecoder().decode(ClaudeUsageResponse.self, from: data)
+        let fable = try XCTUnwrap(response.fable)
+
+        XCTAssertEqual(fable.utilization, 40)
+        XCTAssertEqual(fable.resetsAt, "2026-08-29T00:00:00Z")
+    }
+
+    func testUsageResponseFallsBackToLegacyFableWindow() throws {
+        let data = Data(#"""
+        {
+          "five_hour": null,
+          "seven_day": null,
+          "seven_day_overage_included": {
+            "utilization": 35,
+            "resets_at": "2026-08-29T00:00:00Z"
+          }
+        }
+        """#.utf8)
+
+        let response = try JSONDecoder().decode(ClaudeUsageResponse.self, from: data)
+
+        XCTAssertEqual(response.fable?.utilization, 35)
+    }
+
     func testCredentialCompositionUsesLiveSharedFieldsOnly() throws {
         let target = try ClaudeCredentialEnvelope(rawValue: credential(
             access: "target-access",

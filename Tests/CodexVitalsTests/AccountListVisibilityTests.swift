@@ -211,6 +211,53 @@ final class AccountListVisibilityTests: XCTestCase {
         XCTAssertEqual(decoded.limitingQuotaRemaining, 60)
     }
 
+    func testLegacySnapshotWithoutFableWindowStillDecodes() throws {
+        let account = makeAccount(
+            id: "legacy@example.com|acc",
+            email: "legacy@example.com",
+            plan: "plus",
+            sessionFree: 75,
+            weeklyFree: 60,
+            sessionResetSeconds: 1_000,
+            weeklyResetSeconds: 500_000
+        )
+        let encoded = try JSONEncoder().encode(account)
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+        object.removeValue(forKey: "fableQuotaWindow")
+        let legacyData = try JSONSerialization.data(withJSONObject: object)
+
+        let decoded = try JSONDecoder().decode(Account.self, from: legacyData)
+
+        XCTAssertNil(decoded.fableQuotaWindow)
+        XCTAssertEqual(decoded.usageWindows.map(\.label), ["5h", "1w"])
+    }
+
+    func testExhaustedFableWindowDoesNotDisableClaudeAccount() {
+        var account = makeAccount(
+            id: "claude-native:account-1",
+            email: "claude@example.com",
+            plan: "claude",
+            sessionFree: 80,
+            weeklyFree: 70,
+            sessionResetSeconds: 1_000,
+            weeklyResetSeconds: 500_000
+        )
+        account.provider = .claude
+        account.providerStatus = "ok"
+        account.fableQuotaWindow = QuotaWindow(
+            limitSeconds: QuotaWindow.weeklySeconds,
+            remainingPercent: 0,
+            resetAfterSeconds: 500_000
+        )
+
+        XCTAssertTrue(account.isUsableForCodex)
+        XCTAssertTrue(account.canSwitchProviderAccount)
+        XCTAssertFalse(account.isWeeklyExhausted)
+        XCTAssertEqual(account.limitingQuotaRemaining, 70)
+    }
+
     func testPlanDisplayNameNormalizesCommonPlans() {
         XCTAssertEqual(PlanDisplayFormatter.badgeText(for: "pro"), "Pro")
         XCTAssertEqual(PlanDisplayFormatter.badgeText(for: "plus"), "Plus")

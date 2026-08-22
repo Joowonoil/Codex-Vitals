@@ -241,11 +241,13 @@ actor ClaudeAccountService {
                 try writeProfileCredential(result.credential, profileID: profile.id)
             }
             let windows = usageWindows(result.response, now: now)
+            let fableWindow = fableQuotaWindow(result.response, now: now)
             return account(
                 profile,
                 isActive: isActive,
                 status: windows.isEmpty ? .unavailable : .ok,
-                windows: windows
+                windows: windows,
+                fableWindow: fableWindow
             )
         } catch let error as ClaudeNativeError {
             let status: ClaudeAccountStatus
@@ -269,7 +271,8 @@ actor ClaudeAccountService {
         _ profile: ClaudeNativeProfile,
         isActive: Bool,
         status: ClaudeAccountStatus,
-        windows: [QuotaWindow]
+        windows: [QuotaWindow],
+        fableWindow: QuotaWindow? = nil
     ) -> Account {
         let fiveHour = windows.first { $0.kind == .fiveHour }
         let weekly = windows.first { $0.kind == .weekly }
@@ -286,6 +289,7 @@ actor ClaudeAccountService {
             sessionResetSeconds: fiveHour?.resetAfterSeconds ?? 0,
             weeklyResetSeconds: weekly?.resetAfterSeconds ?? 0,
             quotaWindows: hasUsage ? windows : [],
+            fableQuotaWindow: hasUsage ? fableWindow : nil,
             planRenewalDate: nil,
             hasError: !hasUsage,
             errorMessage: status.errorMessage,
@@ -314,6 +318,16 @@ actor ClaudeAccountService {
                 )
             },
         ].compactMap { $0 }
+    }
+
+    private func fableQuotaWindow(_ response: ClaudeUsageResponse, now: Date) -> QuotaWindow? {
+        response.fable.map {
+            QuotaWindow(
+                limitSeconds: QuotaWindow.weeklySeconds,
+                remainingPercent: 100 - $0.utilization,
+                resetAfterSeconds: resetSeconds($0.resetsAt, now: now)
+            )
+        }
     }
 
     private func resetSeconds(_ value: String?, now: Date) -> TimeInterval {

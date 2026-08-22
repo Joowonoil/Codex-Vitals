@@ -91,6 +91,7 @@ struct Account: Identifiable, Equatable, Codable, Sendable {
     let sessionResetSeconds: Double
     let weeklyResetSeconds: Double
     var quotaWindows: [QuotaWindow]? = nil
+    var fableQuotaWindow: QuotaWindow? = nil
     var planRenewalDate: Date?
     let hasError: Bool
     let errorMessage: String?

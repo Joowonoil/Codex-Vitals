@@ -5,6 +5,7 @@ import SwiftUI
 struct ContentView: View {
     @ObservedObject var viewModel: UsageViewModel
     @ObservedObject var appUpdater: AppUpdater
+    @ObservedObject var githubStarPrompt: GitHubStarPromptModel
     @State private var isShowingSettings = false
 
     static let preferredWidth: CGFloat = 652
@@ -19,56 +20,66 @@ struct ContentView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            HeaderView(vm: viewModel, isShowingSettings: $isShowingSettings)
-            thinDivider
-
-            if isShowingSettings {
-                SettingsView(viewModel: viewModel, appUpdater: appUpdater)
-                    .frame(maxWidth: .infinity, maxHeight: Self.listMaxHeight())
-            } else {
-                if viewModel.isLoading && viewModel.accounts.isEmpty {
-                    SkeletonView()
-                } else if !viewModel.hasAnyAccount {
-                    emptyState
-                } else {
-                    ScrollView(.vertical) {
-                        AccountListView(vm: viewModel)
-                            .frame(maxWidth: .infinity)
-                    }
-                    .background(Theme.listSurfaceTint)
-                    .background(.ultraThinMaterial)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.panelCornerRadius, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: Theme.panelCornerRadius, style: .continuous)
-                            .stroke(Theme.listBorder, lineWidth: 0.6)
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 7)
-                    .frame(maxHeight: Self.listMaxHeight())
-                }
-            }
-
-            thinDivider
-
-            if !isShowingSettings && viewModel.errorsCount > 0 {
-                HStack {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundColor(Theme.warningText)
-                        .font(.system(size: 11))
-                    Text("\(viewModel.errorsCount) account(s) with errors")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                    Spacer()
-                }
-                .padding(.horizontal, 12).padding(.vertical, 4)
+        ZStack {
+            VStack(spacing: 0) {
+                HeaderView(vm: viewModel, isShowingSettings: $isShowingSettings)
                 thinDivider
-            }
 
-            if let accountActionError = viewModel.accountActionError {
-                FooterView(message: accountActionError)
+                if isShowingSettings {
+                    SettingsView(viewModel: viewModel, appUpdater: appUpdater)
+                        .frame(maxWidth: .infinity, maxHeight: Self.listMaxHeight())
+                } else {
+                    if viewModel.isLoading && viewModel.accounts.isEmpty {
+                        SkeletonView()
+                    } else if !viewModel.hasAnyAccount {
+                        emptyState
+                    } else {
+                        ScrollView(.vertical) {
+                            AccountListView(vm: viewModel)
+                                .frame(maxWidth: .infinity)
+                        }
+                        .background(Theme.listSurfaceTint)
+                        .background(.ultraThinMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.panelCornerRadius, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: Theme.panelCornerRadius, style: .continuous)
+                                .stroke(Theme.listBorder, lineWidth: 0.6)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 7)
+                        .frame(maxHeight: Self.listMaxHeight())
+                    }
+                }
+
+                thinDivider
+
+                if !isShowingSettings && viewModel.errorsCount > 0 {
+                    HStack {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(Theme.warningText)
+                            .font(.system(size: 11))
+                        Text("\(viewModel.errorsCount) account(s) with errors")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 4)
+                    thinDivider
+                }
+
+                if let accountActionError = viewModel.accountActionError {
+                    FooterView(message: accountActionError)
+                }
+            }
+            .allowsHitTesting(!githubStarPrompt.isPresented)
+
+            if githubStarPrompt.isPresented {
+                GitHubStarPromptView(model: githubStarPrompt)
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                    .zIndex(1)
             }
         }
+        .animation(.easeInOut(duration: 0.16), value: githubStarPrompt.isPresented)
         .frame(width: Self.preferredWidth)
         .background(Theme.popoverSurfaceTint)
         .background(.ultraThinMaterial)
@@ -117,6 +128,72 @@ struct ContentView: View {
             .padding(.vertical, 32)
             .padding(.horizontal, 16)
         }
+    }
+}
+
+private struct GitHubStarPromptView: View {
+    @ObservedObject var model: GitHubStarPromptModel
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.16)
+                .background(.ultraThinMaterial)
+                .ignoresSafeArea()
+
+            VStack(spacing: 14) {
+                Image(systemName: "star.fill")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(Color.yellow.opacity(0.9))
+                    .frame(width: 42, height: 42)
+                    .background(.thinMaterial)
+                    .clipShape(Circle())
+                    .overlay {
+                        Circle()
+                            .stroke(Color.primary.opacity(0.12), lineWidth: 0.7)
+                    }
+
+                VStack(spacing: 5) {
+                    Text("Enjoying Codex Vitals?")
+                        .font(.system(size: 16, weight: .semibold))
+
+                    Text("A GitHub star helps more people discover this open-source project.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                HStack(spacing: 8) {
+                    Button("No Thanks") {
+                        model.complete()
+                    }
+                    .buttonStyle(.bordered)
+                    .keyboardShortcut(.cancelAction)
+
+                    Button {
+                        model.complete()
+                        NSWorkspace.shared.open(AppInfo.repositoryURL)
+                    } label: {
+                        Label("Star on GitHub", systemImage: "star")
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                .controlSize(.regular)
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 20)
+            .frame(width: 330)
+            .background(Theme.toolbarSurface)
+            .background(.regularMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(Theme.toolbarBorder, lineWidth: 0.8)
+            }
+            .shadow(color: .black.opacity(0.18), radius: 18, y: 8)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Support Codex Vitals on GitHub")
     }
 }
 

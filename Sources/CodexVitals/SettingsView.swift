@@ -185,7 +185,7 @@ struct SettingsView: View {
                     open(AppInfo.repositoryURL)
                 } label: {
                     HStack(spacing: 10) {
-                        Label("GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
+                        Label("Star on GitHub", systemImage: "star")
                             .font(.system(size: 13, weight: .medium))
                         Spacer(minLength: 0)
                         Image(systemName: "arrow.up.right")
@@ -197,7 +197,7 @@ struct SettingsView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help("Open Codex Vitals GitHub")
+                .help("Open Codex Vitals on GitHub and leave a star")
 
                 Divider()
                     .opacity(0.12)

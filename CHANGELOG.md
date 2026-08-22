@@ -2,6 +2,12 @@
 
 All notable changes to Codex Vitals will be documented here.
 
+## 1.4.1 - 2026-08-22
+
+- Added a one-time GitHub star invitation shown on the first user-opened menu bar popover after installing this update.
+- Added a persistent Star on GitHub link in Settings without requesting GitHub OAuth access or starring automatically.
+- Added Fable 5 weekly remaining usage and reset information as a second detail row for Claude accounts when Anthropic provides that scoped limit.
+
 ## 1.4.0 - 2026-08-20
 
 - Added native Claude Code usage monitoring and manual account switching on macOS.

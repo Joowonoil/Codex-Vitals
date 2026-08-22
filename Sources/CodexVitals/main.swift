@@ -13,6 +13,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var popover: NSPopover!
     private let viewModel = UsageViewModel()
     private let authMirrorService = CodexAuthMirrorService()
+    private let githubStarPrompt = GitHubStarPromptModel()
     private var appUpdater: AppUpdater!
     private var eventMonitor: Any?
 
@@ -50,7 +51,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     // MARK: - Popover
 
     private func setupPopover() {
-        let root = ContentView(viewModel: viewModel, appUpdater: appUpdater)
+        let root = ContentView(
+            viewModel: viewModel,
+            appUpdater: appUpdater,
+            githubStarPrompt: githubStarPrompt
+        )
         let controller = NSHostingController(rootView: root)
         controller.preferredContentSize = Self.preferredContentSize
         if #available(macOS 13.0, *) {
@@ -83,6 +88,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             NSApp.activate(ignoringOtherApps: true)
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             popover.contentViewController?.view.window?.makeKey()
+            githubStarPrompt.presentIfNeeded()
             eventMonitor = NSEvent.addGlobalMonitorForEvents(
                 matching: [.leftMouseDown, .rightMouseDown]
             ) { [weak self] _ in

@@ -193,6 +193,8 @@ struct ClaudeTokenResponse: Decodable, Sendable {
 struct ClaudeUsageResponse: Decodable, Sendable {
     let fiveHour: Window?
     let sevenDay: Window?
+    let sevenDayOverageIncluded: Window?
+    let limits: [Limit]?
 
     struct Window: Decodable, Sendable {
         let utilization: Double
@@ -204,9 +206,48 @@ struct ClaudeUsageResponse: Decodable, Sendable {
         }
     }
 
+    struct Limit: Decodable, Sendable {
+        let kind: String?
+        let percent: Double?
+        let resetsAt: String?
+        let scope: Scope?
+
+        struct Scope: Decodable, Sendable {
+            let model: Model?
+
+            struct Model: Decodable, Sendable {
+                let displayName: String?
+
+                enum CodingKeys: String, CodingKey {
+                    case displayName = "display_name"
+                }
+            }
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case kind
+            case percent
+            case resetsAt = "resets_at"
+            case scope
+        }
+    }
+
+    var fable: Window? {
+        if let limit = limits?.first(where: { limit in
+            limit.kind == "weekly_scoped"
+                && limit.scope?.model?.displayName?.localizedCaseInsensitiveContains("fable") == true
+                && limit.percent != nil
+        }), let percent = limit.percent {
+            return Window(utilization: percent, resetsAt: limit.resetsAt)
+        }
+        return sevenDayOverageIncluded
+    }
+
     enum CodingKeys: String, CodingKey {
         case fiveHour = "five_hour"
         case sevenDay = "seven_day"
+        case sevenDayOverageIncluded = "seven_day_overage_included"
+        case limits
     }
 }
 

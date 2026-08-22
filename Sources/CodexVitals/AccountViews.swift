@@ -549,8 +549,12 @@ struct AccountCompactRow: View {
     @State private var isShowingRemovalConfirmation = false
 
     private var exhausted: Bool { account.isWeeklyExhausted }
+    private var hasFableQuota: Bool {
+        account.isClaudeAccount && account.fableQuotaWindow != nil
+    }
     private var rowHeight: CGFloat {
-        account.hasDisplayAlias ? 40 : 34
+        let baseHeight: CGFloat = account.hasDisplayAlias ? 40 : 34
+        return baseHeight + (hasFableQuota ? 22 : 0)
     }
     private var canShowSwapControl: Bool {
         showsSwitchControls
@@ -597,9 +601,7 @@ struct AccountCompactRow: View {
                     freeResetStatus(width: freeResetWidth, alignment: .leading)
                 } else {
                     accountActionControl(width: layout.actionWidth)
-
-                    quotaMetrics(layout: layout)
-                    planCycleText(width: layout.planCycleWidth)
+                    usageMetrics(layout: layout)
                 }
             }
             .padding(.horizontal, CompactRowLayout.horizontalPadding)
@@ -760,6 +762,45 @@ struct AccountCompactRow: View {
             }
         }
         .frame(width: layout.quotaAreaWidth, alignment: .trailing)
+    }
+
+    private func usageMetrics(layout: CompactRowLayout.Metrics) -> some View {
+        let width = layout.quotaAreaWidth + layout.planCycleWidth + layout.spacing
+        return VStack(alignment: .trailing, spacing: 3) {
+            HStack(spacing: layout.spacing) {
+                quotaMetrics(layout: layout)
+                planCycleText(width: layout.planCycleWidth)
+            }
+
+            if let fableWindow = account.fableQuotaWindow {
+                fableQuotaMetric(fableWindow, layout: layout, width: width)
+            }
+        }
+        .frame(width: width, alignment: .trailing)
+    }
+
+    private func fableQuotaMetric(
+        _ window: QuotaWindow,
+        layout: CompactRowLayout.Metrics,
+        width: CGFloat
+    ) -> some View {
+        let dimmed = window.isExhausted
+        let meterWidth = width - layout.weeklyResetWidth - 2
+        return HStack(spacing: 2) {
+            FableQuotaMeter(
+                pct: window.remainingPercent,
+                dimmed: dimmed,
+                width: meterWidth
+            )
+            ResetTimeBadge(
+                text: ResetFormatter.compact(seconds: window.resetAfterSeconds),
+                color: .secondary,
+                width: layout.weeklyResetWidth,
+                help: ResetFormatter.fullTooltip(seconds: window.resetAfterSeconds)
+            )
+        }
+        .frame(width: width, alignment: .trailing)
+        .opacity(dimmed ? 0.76 : 1)
     }
 
     private func quotaMetricGroup(
@@ -1138,6 +1179,48 @@ struct QuotaMeter: View {
                 .stroke(Theme.metricBorder, lineWidth: 0.6)
         }
         .opacity(dimmed ? 0.76 : 1)
+    }
+}
+
+struct FableQuotaMeter: View {
+    let pct: Double
+    let dimmed: Bool
+    let width: CGFloat
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text("Fable")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(Theme.providerText(for: .claude))
+                .lineLimit(1)
+                .frame(width: 34, alignment: .leading)
+
+            MeterTrack(
+                pct: pct,
+                fill: dimmed ? Theme.weeklyExhaustedBar : Theme.barColor(for: pct),
+                height: 4,
+                minimumFill: 2
+            )
+            .frame(maxWidth: .infinity)
+
+            Text(String(format: "%.0f%%", pct))
+                .font(.system(size: 10, weight: .semibold))
+                .monospacedDigit()
+                .foregroundStyle(dimmed ? .secondary : Theme.statusTextColor(for: pct))
+                .lineLimit(1)
+                .frame(width: 34, alignment: .trailing)
+        }
+        .padding(.horizontal, 6)
+        .frame(width: width, height: 18)
+        .background {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(dimmed ? Theme.metricSurface.opacity(0.7) : Theme.metricSurface)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .stroke(Theme.providerBorder(for: .claude), lineWidth: 0.55)
+        }
+        .help("Fable: \(String(format: "%.0f%%", pct)) remaining")
     }
 }
 
