@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Joowonoil/codex-vitals/releases/download/v1.4.1/CodexVitals-1.4.1.dmg"><strong>Download for macOS</strong></a>
+  <a href="https://github.com/Joowonoil/codex-vitals/releases/download/v1.4.2/CodexVitals-1.4.2.dmg"><strong>Download for macOS</strong></a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
   <a href="https://github.com/Joowonoil/codex-vitals/releases/download/windows-v1.0.0/CodexVitals-Windows-1.0.0-Setup.exe"><strong>Download for Windows</strong></a>
 </p>
@@ -37,6 +37,7 @@
 - View Claude 5-hour and 7-day limits, plus Fable 5 weekly remaining usage when available, and switch the active Claude Code account on macOS
 - Enable Launch at Login from the settings panel
 - Tune automatic refresh cadence from the settings panel
+- Enable grouped notifications on macOS after automatic refresh confirms that Codex or Claude usage has reset
 - Check for signed app updates and enable automatic installation
 - Identify invalid or deactivated accounts
 
@@ -53,7 +54,7 @@
 - **Passive Auth Mirroring** — Codex-managed token rotations are mirrored back into saved local profiles
 - **Local-First** — All data stays on your machine; no cloud sync
 - **Secure Token Storage** — Saved Claude credentials use the macOS Keychain; sensitive Codex files use owner-only permissions
-- **Settings Panel** — Manage Launch at Login, usage refresh, and application updates inside the menu bar popover
+- **Settings Panel** — Manage Launch at Login, usage refresh, reset notifications, and application updates inside the menu bar popover
 - **Signed Automatic Updates** — Sparkle on macOS and WinSparkle on direct Windows builds verify EdDSA signatures before installation
 - **Network-Friendly Refresh** — Automatic usage refresh defaults to 10 minutes, metadata is cached, and account requests are throttled
 - **Smart Ordering** — Accounts are implicitly ranked by a composite score so the "best account to use now" surfaces to the top

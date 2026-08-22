@@ -2,6 +2,11 @@
 
 All notable changes to Codex Vitals will be documented here.
 
+## 1.4.2 - 2026-08-22
+
+- Added optional macOS grouped notifications when an automatic refresh confirms that Codex or Claude usage limits have reset.
+- Kept reset detection on the existing refresh cycle without adding extra polling or a one-minute refresh option.
+
 ## 1.4.1 - 2026-08-22
 
 - Added a one-time GitHub star invitation shown on the first user-opened menu bar popover after installing this update.

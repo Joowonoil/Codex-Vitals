@@ -41,6 +41,11 @@ final class UsageViewModel: ObservableObject {
             restartRefreshTimer()
         }
     }
+    @Published private(set) var resetNotificationsEnabled = UserDefaults.standard.bool(
+        forKey: "usageResetNotificationsEnabled"
+    )
+    @Published private(set) var isRequestingResetNotificationPermission = false
+    @Published private(set) var resetNotificationStatusMessage: String?
     @Published var waitingForResetCollapsed = false
     @Published var freeWaitingCollapsed = true
     @Published private var usesManualAccountOrder = false
@@ -52,13 +57,16 @@ final class UsageViewModel: ObservableObject {
     private let captureService = CodexAccountCaptureService()
     private let switchService = CodexAccountSwitchService()
     private let removalService = LocalAccountRemovalService()
+    private let resetNotificationService = UsageResetNotificationService()
     private var refreshTimer: Timer?
     private var reloginTask: Task<Void, Never>?
     private var switchTask: Task<Void, Never>?
     private var pendingDebouncedRefreshTask: Task<Void, Never>?
     private var pendingRefreshAfterCurrent = false
     private var pendingForceMetadataRefreshAfterCurrent = false
+    private var pendingResetNotificationCheck = false
     private let manualAccountOrderKey = "manualAccountOrderingEnabled"
+    private let resetNotificationsEnabledKey = "usageResetNotificationsEnabled"
 
     // MARK: - Init
 
@@ -259,20 +267,23 @@ final class UsageViewModel: ObservableObject {
 
     // MARK: - Actions
 
-    func refresh(forceMetadataRefresh: Bool = false) {
+    func refresh(forceMetadataRefresh: Bool = false, notifyOnReset: Bool = false) {
         pendingDebouncedRefreshTask?.cancel()
         pendingDebouncedRefreshTask = nil
 
         guard !isLoading else {
             pendingRefreshAfterCurrent = true
             pendingForceMetadataRefreshAfterCurrent = pendingForceMetadataRefreshAfterCurrent || forceMetadataRefresh
+            pendingResetNotificationCheck = pendingResetNotificationCheck || notifyOnReset
             return
         }
 
-        runRefresh(forceMetadataRefresh: forceMetadataRefresh)
+        runRefresh(forceMetadataRefresh: forceMetadataRefresh, notifyOnReset: notifyOnReset)
     }
 
-    private func runRefresh(forceMetadataRefresh: Bool) {
+    private func runRefresh(forceMetadataRefresh: Bool, notifyOnReset: Bool) {
+        let previousAccounts = accounts
+        let previousRefresh = lastRefresh
         isLoading = true
         error = nil
         codexLoginStatus = CodexLoginStatusStore.load()
@@ -282,23 +293,77 @@ final class UsageViewModel: ObservableObject {
             async let codexAccounts = service.loadAll(forceMetadataRefresh: forceMetadataRefresh)
             async let claudeResult = claudeService.loadAccounts()
             let (loadedCodexAccounts, loadedClaudeResult) = await (codexAccounts, claudeResult)
-            accounts = loadedCodexAccounts + loadedClaudeResult.accounts
+            let loadedAccounts = loadedCodexAccounts + loadedClaudeResult.accounts
             if let claudeError = loadedClaudeResult.errorMessage {
                 accountActionError = claudeError
             }
             let now = Date()
+            let resetEvents = notifyOnReset && resetNotificationsEnabled
+                ? UsageResetDetector.detect(
+                    previousAccounts: previousAccounts,
+                    previousFetchedAt: previousRefresh,
+                    currentAccounts: loadedAccounts,
+                    currentFetchedAt: now
+                )
+                : []
+            accounts = loadedAccounts
             lastRefresh = now
             AccountSnapshotStore.save(accounts: accounts, lastRefresh: now)
             codexLoginStatus = CodexLoginStatusStore.load()
             refreshCodexAvailability()
             isLoading = false
             restartRefreshTimer()
+            if !resetEvents.isEmpty {
+                await resetNotificationService.deliver(events: resetEvents)
+            }
             if pendingRefreshAfterCurrent {
                 let shouldForceMetadata = pendingForceMetadataRefreshAfterCurrent
+                let shouldNotifyOnReset = pendingResetNotificationCheck
                 pendingRefreshAfterCurrent = false
                 pendingForceMetadataRefreshAfterCurrent = false
-                refresh(forceMetadataRefresh: shouldForceMetadata)
+                pendingResetNotificationCheck = false
+                refresh(
+                    forceMetadataRefresh: shouldForceMetadata,
+                    notifyOnReset: shouldNotifyOnReset
+                )
             }
+        }
+    }
+
+    func setResetNotificationsEnabled(_ enabled: Bool) {
+        if !enabled {
+            UserDefaults.standard.set(false, forKey: resetNotificationsEnabledKey)
+            resetNotificationsEnabled = false
+            resetNotificationStatusMessage = nil
+            return
+        }
+
+        guard !isRequestingResetNotificationPermission else { return }
+        isRequestingResetNotificationPermission = true
+        resetNotificationStatusMessage = nil
+        Task {
+            let granted = await resetNotificationService.requestAuthorization()
+            UserDefaults.standard.set(granted, forKey: resetNotificationsEnabledKey)
+            resetNotificationsEnabled = granted
+            isRequestingResetNotificationPermission = false
+            if !granted {
+                resetNotificationStatusMessage = "Notifications are disabled in System Settings"
+            }
+        }
+    }
+
+    func refreshResetNotificationAuthorization() {
+        guard resetNotificationsEnabled else { return }
+        Task {
+            let status = await resetNotificationService.authorizationStatus()
+            let isAuthorized = status == .authorized || status == .provisional
+            guard !isAuthorized else {
+                resetNotificationStatusMessage = nil
+                return
+            }
+            UserDefaults.standard.set(false, forKey: resetNotificationsEnabledKey)
+            resetNotificationsEnabled = false
+            resetNotificationStatusMessage = "Notifications are disabled in System Settings"
         }
     }
 
@@ -717,7 +782,7 @@ final class UsageViewModel: ObservableObject {
         refreshTimer = nil
         guard !isLoading, let interval = autoRefreshInterval.seconds else { return }
         let t = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.refresh() }
+            Task { @MainActor in self?.refresh(notifyOnReset: true) }
         }
         RunLoop.main.add(t, forMode: .common)
         refreshTimer = t

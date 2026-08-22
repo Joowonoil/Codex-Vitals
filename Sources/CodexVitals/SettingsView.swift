@@ -56,6 +56,21 @@ struct SettingsView: View {
                     }
                     .frame(maxWidth: .infinity)
                 }
+
+                Divider()
+                    .opacity(0.12)
+                    .padding(.leading, 14)
+
+                settingsRow {
+                    Toggle(isOn: Binding(
+                        get: { viewModel.resetNotificationsEnabled },
+                        set: { viewModel.setResetNotificationsEnabled($0) }
+                    )) {
+                        Label("Reset Notifications", systemImage: "bell.badge")
+                    }
+                    .disabled(viewModel.isRequestingResetNotificationPermission)
+                    .help("Notify after an automatic refresh confirms that usage has reset")
+                }
             }
             .background(.regularMaterial)
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -67,6 +82,14 @@ struct SettingsView: View {
 
             if let launchStatusMessage {
                 Text(launchStatusMessage)
+                    .font(.system(size: 11))
+                    .foregroundColor(Theme.warningText)
+                    .lineLimit(2)
+                    .frame(width: contentWidth, alignment: .leading)
+            }
+
+            if let resetNotificationStatusMessage = viewModel.resetNotificationStatusMessage {
+                Text(resetNotificationStatusMessage)
                     .font(.system(size: 11))
                     .foregroundColor(Theme.warningText)
                     .lineLimit(2)
@@ -237,6 +260,7 @@ struct SettingsView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onAppear {
             launchAtLogin.refresh()
+            viewModel.refreshResetNotificationAuthorization()
             appUpdater.refreshSettings()
         }
     }
