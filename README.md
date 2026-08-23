@@ -4,7 +4,7 @@
   <img src="https://img.shields.io/badge/platform-macOS%2013+-000000?logo=apple" alt="macOS 13+">
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078D4?logo=windows11" alt="Windows 10/11">
   <img src="https://img.shields.io/badge/swift-5.9-F05138?logo=swift" alt="Swift 5.9">
-  <a href="https://github.com/Joowonoil/Codex-Vitals/releases">
+  <a href="https://github.com/Joowonoil/Codex-Vitals/releases/latest">
     <img src="https://img.shields.io/github/downloads/Joowonoil/Codex-Vitals/total?label=downloads&logo=github" alt="GitHub release downloads">
   </a>
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="License: MIT">
