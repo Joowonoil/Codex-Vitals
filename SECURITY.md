@@ -19,7 +19,7 @@ Codex Vitals does not intentionally log access tokens, refresh tokens, ID tokens
 
 ## Claude Integration
 
-On macOS, saved Claude credentials are stored in the app-specific Keychain service `com.ramterstudio.CodexVitals.Claude`. `claude-accounts.json` contains only account identity metadata, aliases, and ordering; it does not contain access or refresh tokens. A previous credential generation is retained only in the same app-specific Keychain service to recover from an interrupted token update.
+On macOS, saved Claude credentials are stored in the app-specific Keychain service `com.ramterstudio.CodexVitals.Claude`. `claude-accounts.json` contains only account identity metadata, aliases, ordering, workspace labels, visibility, available plan metadata, and optional user-entered renewal dates; it does not contain access or refresh tokens. Hiding the active Claude profile from Codex Vitals does not sign it out of Claude Code. A previous credential generation is retained only in the same app-specific Keychain service to recover from an interrupted token update.
 
 Interactive add and reconnect actions invoke the installed Claude Code executable with the fixed argument sequence `auth login --claudeai` and an optional email hint. The app does not invoke a shell and does not pass credentials through command arguments or environment variables. Temporary command output is owner-only and deleted when the login process exits.
 

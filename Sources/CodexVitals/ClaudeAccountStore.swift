@@ -56,6 +56,9 @@ final class ClaudeAccountStore: @unchecked Sendable {
             organizationUUID: identity.organizationUUID,
             organizationName: identity.organizationName,
             alias: Account.normalizedAlias(alias) ?? existing?.alias,
+            workspaceAlias: existing?.workspaceAlias,
+            planRenewalDate: existing?.planRenewalDate,
+            isHidden: existing?.isHidden,
             oauthAccountJSON: oauthJSON,
             createdAt: existing?.createdAt ?? now,
             updatedAt: now
@@ -79,6 +82,59 @@ final class ClaudeAccountStore: @unchecked Sendable {
         }
         document.profiles[index].alias = Account.normalizedAlias(alias)
         document.profiles[index].updatedAt = Date()
+        try write(document)
+    }
+
+    func updateWorkspaceAlias(workspace: String, alias: String?) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        var document = try documentUnlocked()
+        let normalizedAlias = Account.normalizedAlias(alias)
+        var changed = false
+        for index in document.profiles.indices where document.profiles[index].workspaceName == workspace {
+            document.profiles[index].workspaceAlias = normalizedAlias
+            document.profiles[index].updatedAt = Date()
+            changed = true
+        }
+        guard changed else { throw ClaudeNativeError.profileMissing }
+        try write(document)
+    }
+
+    func updatePlanRenewalDate(profileID: String, date: Date?) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        var document = try documentUnlocked()
+        guard let index = document.profiles.firstIndex(where: { $0.id == profileID }) else {
+            throw ClaudeNativeError.profileMissing
+        }
+        document.profiles[index].planRenewalDate = date
+        document.profiles[index].updatedAt = Date()
+        try write(document)
+    }
+
+    func setHidden(profileID: String, hidden: Bool) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        var document = try documentUnlocked()
+        guard let index = document.profiles.firstIndex(where: { $0.id == profileID }) else {
+            throw ClaudeNativeError.profileMissing
+        }
+        document.profiles[index].isHidden = hidden ? true : nil
+        document.profiles[index].updatedAt = Date()
+        if !hidden, !document.order.contains(profileID) {
+            document.order.append(profileID)
+        }
+        try write(document)
+    }
+
+    func updateOrder(_ orderedProfileIDs: [String]) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        var document = try documentUnlocked()
+        let knownIDs = Set(document.profiles.map(\.id))
+        let requested = orderedProfileIDs.filter { knownIDs.contains($0) }
+        let remaining = document.order.filter { !requested.contains($0) && knownIDs.contains($0) }
+        document.order = requested + remaining
         try write(document)
     }
 

@@ -2,6 +2,14 @@
 
 All notable changes to Codex Vitals will be documented here.
 
+## 1.5.0 - 2026-08-23
+
+- Refined the macOS account list and Settings layout with clearer hierarchy, reduced glass effects, consistent typography, and tighter spacing.
+- Added adaptive quota layouts so single-window limits and full duration labels remain readable without clipping.
+- Added Claude plan detection, workspace grouping and renaming, account reordering, and optional manually entered plan renewal dates.
+- Allowed the active Claude account to be hidden from Codex Vitals without signing it out of Claude Code, while preserving explicit re-add and reconnect flows.
+- Added urgency styling for approaching plan renewal dates while keeping distant dates visually neutral.
+
 ## 1.4.2 - 2026-08-22
 
 - Added optional macOS grouped notifications when an automatic refresh confirms that Codex or Claude usage limits have reset.

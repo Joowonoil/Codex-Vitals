@@ -39,7 +39,7 @@ actor ClaudeAccountService {
 
         let profiles: [ClaudeNativeProfile]
         do {
-            profiles = try accountStore.load()
+            profiles = try accountStore.load().filter(\.isVisible)
         } catch {
             return ClaudeNativeLoadResult(accounts: [], errorMessage: error.localizedDescription)
         }
@@ -69,7 +69,9 @@ actor ClaudeAccountService {
     func addAccount() async throws -> ClaudeNativeProfile {
         try captureCurrentActiveBeforeLogin()
         try await runLogin(email: nil)
-        return try captureLoggedInAccount(expectedProfile: nil)
+        let profile = try captureLoggedInAccount(expectedProfile: nil)
+        try accountStore.setHidden(profileID: profile.id, hidden: false)
+        return try accountStore.profile(id: profile.id) ?? profile
     }
 
     @discardableResult
@@ -83,7 +85,8 @@ actor ClaudeAccountService {
         guard actual.id == expected.id else {
             throw ClaudeNativeError.wrongAccount(expected: expected.email, actual: actual.email)
         }
-        return actual
+        try accountStore.setHidden(profileID: actual.id, hidden: false)
+        return try accountStore.profile(id: actual.id) ?? actual
     }
 
     func cancelLogin() {
@@ -94,13 +97,26 @@ actor ClaudeAccountService {
         try accountStore.updateAlias(profileID: profileID, alias: alias)
     }
 
+    func updateWorkspaceAlias(workspace: String, alias: String?) throws {
+        try accountStore.updateWorkspaceAlias(workspace: workspace, alias: alias)
+    }
+
+    func updatePlanRenewalDate(profileID: String, date: Date?) throws {
+        try accountStore.updatePlanRenewalDate(profileID: profileID, date: date)
+    }
+
+    func updateOrder(profileIDs: [String]) throws {
+        try accountStore.updateOrder(profileIDs)
+    }
+
     func removeAccount(profileID: String) throws {
         guard let profile = try accountStore.profile(id: profileID) else {
             throw ClaudeNativeError.profileMissing
         }
         if let active = try currentConfigIfPresent()?.oauthAccount,
            profile.matches(oauthAccount: active) {
-            throw ClaudeNativeError.activeAccountRemoval
+            try accountStore.setHidden(profileID: profileID, hidden: true)
+            return
         }
 
         let credential = try keychain.read(
@@ -282,15 +298,16 @@ actor ClaudeAccountService {
             profileKey: nil,
             email: profile.email,
             alias: profile.alias,
-            workspace: "Claude",
-            plan: "Claude",
+            workspace: profile.workspaceName,
+            workspaceAlias: profile.workspaceAlias,
+            plan: profile.planDisplayName ?? "Claude",
             sessionFree: fiveHour?.remainingPercent ?? 0,
             weeklyFree: weekly?.remainingPercent ?? 0,
             sessionResetSeconds: fiveHour?.resetAfterSeconds ?? 0,
             weeklyResetSeconds: weekly?.resetAfterSeconds ?? 0,
             quotaWindows: hasUsage ? windows : [],
             fableQuotaWindow: hasUsage ? fableWindow : nil,
-            planRenewalDate: nil,
+            planRenewalDate: profile.planRenewalDate,
             hasError: !hasUsage,
             errorMessage: status.errorMessage,
             provider: .claude,

@@ -33,6 +33,9 @@ struct ClaudeNativeProfile: Codable, Equatable, Identifiable, Sendable {
     let organizationUUID: String?
     let organizationName: String?
     var alias: String?
+    var workspaceAlias: String?
+    var planRenewalDate: Date?
+    var isHidden: Bool?
     var oauthAccountJSON: String
     let createdAt: Date
     var updatedAt: Date
@@ -41,9 +44,25 @@ struct ClaudeNativeProfile: Codable, Equatable, Identifiable, Sendable {
         Account.normalizedAlias(alias) ?? email
     }
 
+    var workspaceName: String {
+        Account.normalizedAlias(organizationName) ?? "Claude"
+    }
+
+    var displayWorkspaceName: String {
+        Account.normalizedAlias(workspaceAlias) ?? workspaceName
+    }
+
+    var isVisible: Bool {
+        isHidden != true
+    }
+
     var oauthAccount: [String: Any]? {
         guard let data = oauthAccountJSON.data(using: .utf8) else { return nil }
         return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    }
+
+    var planDisplayName: String? {
+        oauthAccount.flatMap(ClaudePlanFormatter.displayName)
     }
 
     func matches(oauthAccount: [String: Any]) -> Bool {
@@ -53,6 +72,35 @@ struct ClaudeNativeProfile: Codable, Equatable, Identifiable, Sendable {
         }
         return email.caseInsensitiveCompare(identity.email) == .orderedSame
             && organizationUUID == identity.organizationUUID
+    }
+}
+
+enum ClaudePlanFormatter {
+    static func displayName(from metadata: [String: Any]) -> String? {
+        let values = [
+            string(metadata["seatTier"]),
+            string(metadata["organizationType"]),
+            string(metadata["userRateLimitTier"]),
+            string(metadata["organizationRateLimitTier"]),
+        ].compactMap { $0 }
+        let normalized = values.joined(separator: " ").lowercased()
+
+        if normalized.contains("max") {
+            if normalized.contains("20x") { return "Max 20x" }
+            if normalized.contains("5x") { return "Max 5x" }
+            return "Max"
+        }
+        if normalized.contains("enterprise") { return "Enterprise" }
+        if normalized.contains("team") { return "Team" }
+        if normalized.contains("pro") { return "Pro" }
+        if normalized.contains("free") { return "Free" }
+        return nil
+    }
+
+    private static func string(_ value: Any?) -> String? {
+        guard let value = value as? String else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }
 

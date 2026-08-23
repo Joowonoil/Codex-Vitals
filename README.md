@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Joowonoil/Codex-Vitals/releases/download/v1.4.2/CodexVitals-1.4.2.dmg"><strong>Download for macOS</strong></a>
+  <a href="https://github.com/Joowonoil/Codex-Vitals/releases/download/v1.5.0/CodexVitals-1.5.0.dmg"><strong>Download for macOS</strong></a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
   <a href="https://github.com/Joowonoil/Codex-Vitals/releases/download/windows-v1.0.0/CodexVitals-Windows-1.0.0-Setup.exe"><strong>Download for Windows</strong></a>
 </p>
@@ -34,7 +34,8 @@
 - Reorder accounts manually from the row context menu
 - Instantly see which account is active
 - Switch the active account used by Codex CLI and the desktop app with one click
-- View Claude 5-hour and 7-day limits, plus Fable 5 weekly remaining usage when available, and switch the active Claude Code account on macOS
+- View Claude 5-hour and 7-day limits, available Fable 5 weekly usage, detected plans, workspace labels, and optional plan renewal dates on macOS
+- Reorder, group, reconnect, hide, and explicitly switch saved Claude Code accounts independently of Codex
 - Enable Launch at Login from the settings panel
 - Tune automatic refresh cadence from the settings panel
 - Enable grouped notifications on macOS after automatic refresh confirms that Codex or Claude usage has reset
@@ -50,7 +51,8 @@
 - **Display Aliases** — Local-only account labels for easier scanning while preserving the real email for auth and copy actions
 - **Account Health** — Visual indicators for invalid or deactivated accounts
 - **One-Click Switching** — Apply a saved account to Codex CLI and the supported desktop app
-- **Claude Accounts on macOS** — Add, label, monitor 5-hour, 7-day, and available Fable 5 weekly limits, reconnect, remove, and explicitly switch Claude Code accounts inside Codex Vitals
+- **Claude Accounts on macOS** — Add, label, group, reorder, monitor 5-hour, 7-day, and available Fable 5 weekly limits, reconnect, hide, and explicitly switch Claude Code accounts inside Codex Vitals
+- **Claude Plan Context** — Detect available Claude plan metadata and optionally show a locally entered plan renewal date
 - **Passive Auth Mirroring** — Codex-managed token rotations are mirrored back into saved local profiles
 - **Local-First** — All data stays on your machine; no cloud sync
 - **Secure Token Storage** — Saved Claude credentials use the macOS Keychain; sensitive Codex files use owner-only permissions
@@ -143,11 +145,11 @@ Codex Vitals is local-first and never syncs tokens or exposes a remote service.
 | `~/Library/Application Support/CodexVitals/team-name-cache.json` | Team name cache |
 | `~/Library/Application Support/CodexVitals/backups/<timestamp>-remove-account/` | Backups before removal |
 | macOS Keychain: `com.ramterstudio.CodexVitals.Claude` | Saved Claude credentials |
-| `~/Library/Application Support/CodexVitals/claude-accounts.json` | Non-secret Claude profile metadata and aliases |
+| `~/Library/Application Support/CodexVitals/claude-accounts.json` | Non-secret Claude aliases, ordering, workspace labels, visibility, plan metadata, and optional renewal dates |
 | `~/.claude.json` and Keychain: `Claude Code-credentials` | Active Claude Code account state; Codex Vitals changes only the active account metadata and credential during a manual switch |
 | `%APPDATA%\CodexVitals\` | Windows accounts, snapshots, settings, and local backups |
 
-All sensitive files are written with `0600` permissions. Codex profile removal creates a local backup before deleting profile data; Claude account removal deletes only an inactive saved profile from the app Keychain and metadata store.
+All sensitive files are written with `0600` permissions. Codex profile removal creates a local backup before deleting profile data. Removing an inactive Claude profile deletes its saved app credential and metadata; removing the currently active Claude profile only hides it from Codex Vitals and leaves Claude Code signed in. Re-adding the active account restores it to the list.
 
 ### Network Calls
 
@@ -208,7 +210,7 @@ No. Codex Vitals is local-first and does not sync tokens, account data, or usage
 
 ### How does Claude support work?
 
-On macOS, Codex Vitals imports the currently active Claude Code account, stores saved account credentials in an app-specific Keychain service, and queries best-effort 5-hour and 7-day usage. When Anthropic reports a scoped Fable 5 limit, the app also shows its weekly remaining usage and reset time in a separate detail row. Adding or reconnecting uses Claude Code's official browser login. Switching is explicit and transactional, affects Claude Code only, and preserves unrelated `~/.claude.json` settings. Claude support is not yet included in the Windows build.
+On macOS, Codex Vitals imports the currently active Claude Code account, stores saved account credentials in an app-specific Keychain service, and queries best-effort 5-hour and 7-day usage. When Anthropic reports a scoped Fable 5 limit, the app also shows its weekly remaining usage and reset time in a separate detail row. Available account metadata is used to display the Claude plan, while an optional plan renewal date can be entered locally. Accounts can be grouped into named workspaces and reordered. Adding or reconnecting uses Claude Code's official browser login. Switching is explicit and transactional, affects Claude Code only, and preserves unrelated `~/.claude.json` settings. Claude support is not yet included in the Windows build.
 
 ## Contributing
 

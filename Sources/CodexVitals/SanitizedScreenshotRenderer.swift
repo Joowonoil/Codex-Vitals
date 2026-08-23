@@ -74,7 +74,8 @@ enum SanitizedScreenshotRenderer {
                 weekly: 64,
                 fiveHourReset: 9_800,
                 weeklyReset: 345_600,
-                provider: .codex
+                provider: .codex,
+                planDaysRemaining: 5
             ),
             account(
                 id: "research01@example.com|sample-2",
@@ -87,7 +88,9 @@ enum SanitizedScreenshotRenderer {
                 weekly: 92,
                 fiveHourReset: 14_400,
                 weeklyReset: 432_000,
-                provider: .codex
+                provider: .codex,
+                planDaysRemaining: 23,
+                singleWindowSeconds: 30 * 24 * 60 * 60
             ),
             account(
                 id: "team@example.com|sample-3",
@@ -100,7 +103,8 @@ enum SanitizedScreenshotRenderer {
                 weekly: 86,
                 fiveHourReset: 7_200,
                 weeklyReset: 518_400,
-                provider: .codex
+                provider: .codex,
+                planDaysRemaining: 1
             ),
             account(
                 id: "claude-native:sample-1",
@@ -108,7 +112,7 @@ enum SanitizedScreenshotRenderer {
                 email: "claude@example.com",
                 alias: "Claude Main",
                 workspace: "Claude",
-                plan: "claude",
+                plan: "Max 5x",
                 fiveHour: 81,
                 weekly: 73,
                 fiveHourReset: 12_600,
@@ -124,7 +128,7 @@ enum SanitizedScreenshotRenderer {
                 email: "paper@example.com",
                 alias: "Paper Agent",
                 workspace: "Research",
-                plan: "claude",
+                plan: "Pro",
                 fiveHour: 100,
                 weekly: 98,
                 fiveHourReset: 16_200,
@@ -158,20 +162,21 @@ enum SanitizedScreenshotRenderer {
         provider: AccountProvider,
         providerProfileID: String? = nil,
         providerIsActive: Bool = false,
-        fable: Double? = nil
+        fable: Double? = nil,
+        planDaysRemaining: Int? = nil,
+        singleWindowSeconds: Double? = nil
     ) -> Account {
-        Account(
-            id: id,
-            profileKey: profileKey,
-            email: email,
-            alias: alias,
-            workspace: workspace,
-            plan: plan,
-            sessionFree: fiveHour,
-            weeklyFree: weekly,
-            sessionResetSeconds: fiveHourReset,
-            weeklyResetSeconds: weeklyReset,
-            quotaWindows: [
+        let windows: [QuotaWindow]
+        if let singleWindowSeconds {
+            windows = [
+                QuotaWindow(
+                    limitSeconds: singleWindowSeconds,
+                    remainingPercent: weekly,
+                    resetAfterSeconds: weeklyReset
+                )
+            ]
+        } else {
+            windows = [
                 QuotaWindow(
                     limitSeconds: QuotaWindow.fiveHourSeconds,
                     remainingPercent: fiveHour,
@@ -182,13 +187,30 @@ enum SanitizedScreenshotRenderer {
                     remainingPercent: weekly,
                     resetAfterSeconds: weeklyReset
                 ),
-            ],
+            ]
+        }
+
+        return Account(
+            id: id,
+            profileKey: profileKey,
+            email: email,
+            alias: alias,
+            workspace: workspace,
+            plan: plan,
+            sessionFree: fiveHour,
+            weeklyFree: weekly,
+            sessionResetSeconds: fiveHourReset,
+            weeklyResetSeconds: weeklyReset,
+            quotaWindows: windows,
             fableQuotaWindow: fable.map {
                 QuotaWindow(
                     limitSeconds: QuotaWindow.weeklySeconds,
                     remainingPercent: $0,
                     resetAfterSeconds: 388_800
                 )
+            },
+            planRenewalDate: planDaysRemaining.flatMap {
+                Calendar.current.date(byAdding: .day, value: $0, to: Date())
             },
             hasError: false,
             errorMessage: nil,
@@ -219,7 +241,6 @@ private struct SanitizedProductScreenshot: View {
                     .frame(maxWidth: .infinity)
             }
             .background(Theme.listSurfaceTint)
-            .background(.ultraThinMaterial)
             .clipShape(RoundedRectangle(cornerRadius: Theme.panelCornerRadius, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: Theme.panelCornerRadius, style: .continuous)
@@ -229,8 +250,7 @@ private struct SanitizedProductScreenshot: View {
             .padding(.vertical, 7)
         }
         .frame(width: 652, height: 360)
-        .background(Theme.popoverSurfaceTint)
-        .background(.ultraThinMaterial)
+        .background(Color(nsColor: .windowBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
@@ -251,7 +271,7 @@ private struct SanitizedProductScreenshot: View {
                         .stroke(Color.primary.opacity(0.12), lineWidth: 0.5)
                 }
             Text("Codex Vitals")
-                .font(.system(size: 14, weight: .semibold))
+                .font(Theme.appTitleFont)
             Spacer(minLength: 0)
             HStack(spacing: 1) {
                 headerIcon("magnifyingglass")
@@ -270,7 +290,7 @@ private struct SanitizedProductScreenshot: View {
             .background(.ultraThinMaterial)
             .clipShape(Capsule())
             .overlay { Capsule().stroke(Theme.toolbarBorder, lineWidth: 0.6) }
-            .shadow(color: .black.opacity(0.07), radius: 3, y: 1)
+            .shadow(color: .black.opacity(0.045), radius: 2.5, y: 1)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)

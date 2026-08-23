@@ -238,12 +238,16 @@ final class UsageViewModel: ObservableObject {
         accounts.filter(\.hasError).count
     }
 
-    func workspaceDisplayName(for workspace: String) -> String {
-        accounts.first(where: { $0.workspace == workspace })?.displayWorkspaceName ?? workspace
+    func workspaceDisplayName(for workspace: String, provider: AccountProvider) -> String {
+        accounts.first(where: {
+            $0.workspace == workspace && $0.accountProvider == provider
+        })?.displayWorkspaceName ?? workspace
     }
 
-    func workspaceHasDisplayAlias(_ workspace: String) -> Bool {
-        accounts.first(where: { $0.workspace == workspace })?.hasDisplayWorkspaceAlias ?? false
+    func workspaceHasDisplayAlias(_ workspace: String, provider: AccountProvider) -> Bool {
+        accounts.first(where: {
+            $0.workspace == workspace && $0.accountProvider == provider
+        })?.hasDisplayWorkspaceAlias ?? false
     }
 
     private func sortByManualOrder(_ accounts: [Account]) -> [Account] {
@@ -583,32 +587,88 @@ final class UsageViewModel: ObservableObject {
         }
     }
 
-    func setWorkspaceAlias(_ alias: String?, for workspace: String) {
+    func setPlanRenewalDate(_ date: Date?, for account: Account) {
+        guard account.isClaudeAccount,
+              let profileID = account.providerProfileID else {
+            accountActionError = "Claude account profile is missing."
+            return
+        }
+
+        Task {
+            do {
+                try await claudeService.updatePlanRenewalDate(profileID: profileID, date: date)
+                if let index = accounts.firstIndex(where: { $0.id == account.id }) {
+                    accounts[index].planRenewalDate = date
+                    AccountSnapshotStore.save(accounts: accounts, lastRefresh: lastRefresh)
+                }
+            } catch {
+                accountActionError = error.localizedDescription
+            }
+        }
+    }
+
+    func setWorkspaceAlias(
+        _ alias: String?,
+        for workspace: String,
+        provider: AccountProvider
+    ) {
         let workspaceKey = workspace.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !workspaceKey.isEmpty else {
             accountActionError = "Workspace has no local name to label."
             return
         }
 
+        let normalizedAlias = Account.normalizedAlias(alias)
+        if provider == .claude {
+            Task {
+                do {
+                    try await claudeService.updateWorkspaceAlias(
+                        workspace: workspaceKey,
+                        alias: normalizedAlias
+                    )
+                    applyWorkspaceAlias(
+                        normalizedAlias,
+                        workspace: workspaceKey,
+                        provider: provider
+                    )
+                } catch {
+                    accountActionError = error.localizedDescription
+                }
+            }
+            return
+        }
+
         do {
-            let normalizedAlias = Account.normalizedAlias(alias)
             try AccountProfileStore.updateWorkspaceAlias(workspace: workspaceKey, alias: normalizedAlias)
-            var changed = false
-            for index in accounts.indices where accounts[index].workspace == workspaceKey {
-                accounts[index].workspaceAlias = normalizedAlias
-                changed = true
-            }
-            if changed {
-                AccountSnapshotStore.save(accounts: accounts, lastRefresh: lastRefresh)
-            }
+            applyWorkspaceAlias(normalizedAlias, workspace: workspaceKey, provider: provider)
         } catch {
             accountActionError = error.localizedDescription
         }
     }
 
+    private func applyWorkspaceAlias(
+        _ alias: String?,
+        workspace: String,
+        provider: AccountProvider
+    ) {
+        var changed = false
+        for index in accounts.indices where
+            accounts[index].workspace == workspace
+                && accounts[index].accountProvider == provider {
+            accounts[index].workspaceAlias = alias
+            changed = true
+        }
+        if changed {
+            AccountSnapshotStore.save(accounts: accounts, lastRefresh: lastRefresh)
+        }
+    }
+
     func canMoveAccount(_ account: Account, direction: AccountMoveDirection) -> Bool {
-        guard searchText.isEmpty, account.profileKey != nil else { return false }
-        let rows = movableAccountRows()
+        let hasStoredProfile = account.isClaudeAccount
+            ? account.providerProfileID != nil
+            : account.profileKey != nil
+        guard searchText.isEmpty, hasStoredProfile else { return false }
+        let rows = movableAccountRows(provider: account.accountProvider)
         guard let index = rows.firstIndex(where: { $0.id == account.id }) else { return false }
         switch direction {
         case .up:
@@ -623,12 +683,15 @@ final class UsageViewModel: ObservableObject {
             accountActionError = "Clear search before reordering accounts."
             return
         }
-        guard account.profileKey != nil else {
+        let hasStoredProfile = account.isClaudeAccount
+            ? account.providerProfileID != nil
+            : account.profileKey != nil
+        guard hasStoredProfile else {
             accountActionError = "Account has no local profile to reorder."
             return
         }
 
-        var rows = movableAccountRows()
+        var rows = movableAccountRows(provider: account.accountProvider)
         guard let index = rows.firstIndex(where: { $0.id == account.id }) else { return }
         let destination: Int
         switch direction {
@@ -640,37 +703,64 @@ final class UsageViewModel: ObservableObject {
         guard rows.indices.contains(destination) else { return }
 
         rows.swapAt(index, destination)
-        let orderedProfileKeys = rows.compactMap(\.profileKey)
-
-        do {
-            try AccountProfileStore.updateDefaultOrder(orderedProfileKeys)
-            UserDefaults.standard.set(true, forKey: manualAccountOrderKey)
-            usesManualAccountOrder = true
-            reorderAccountsInMemory(profileKeys: orderedProfileKeys)
-            AccountSnapshotStore.save(accounts: accounts, lastRefresh: lastRefresh)
-        } catch {
-            accountActionError = error.localizedDescription
+        if account.isClaudeAccount {
+            let orderedProfileIDs = rows.compactMap(\.providerProfileID)
+            Task {
+                do {
+                    try await claudeService.updateOrder(profileIDs: orderedProfileIDs)
+                    reorderAccountsInMemory(
+                        provider: .claude,
+                        orderedKeys: orderedProfileIDs
+                    )
+                    AccountSnapshotStore.save(accounts: accounts, lastRefresh: lastRefresh)
+                } catch {
+                    accountActionError = error.localizedDescription
+                }
+            }
+        } else {
+            let orderedProfileKeys = rows.compactMap(\.profileKey)
+            do {
+                try AccountProfileStore.updateDefaultOrder(orderedProfileKeys)
+                UserDefaults.standard.set(true, forKey: manualAccountOrderKey)
+                usesManualAccountOrder = true
+                reorderAccountsInMemory(provider: .codex, orderedKeys: orderedProfileKeys)
+                AccountSnapshotStore.save(accounts: accounts, lastRefresh: lastRefresh)
+            } catch {
+                accountActionError = error.localizedDescription
+            }
         }
     }
 
-    private func movableAccountRows() -> [Account] {
+    private func movableAccountRows(provider: AccountProvider) -> [Account] {
+        let rows: [Account]
         if groupByWorkspace {
-            return groupedPriorityAccounts.flatMap { $0.1 }
+            rows = groupedPriorityAccounts.flatMap { $0.1 }
                 + groupedNormalActiveAccounts.flatMap { $0.1 }
                 + groupedExhaustedAccounts.flatMap { $0.1 }
                 + freeWaitingAccounts
+        } else {
+            rows = priorityAccounts + normalActiveAccounts + nonFreeExhaustedAccounts + freeWaitingAccounts
         }
-        return priorityAccounts + normalActiveAccounts + nonFreeExhaustedAccounts + freeWaitingAccounts
+        return rows.filter { $0.accountProvider == provider }
     }
 
-    private func reorderAccountsInMemory(profileKeys: [String]) {
+    private func reorderAccountsInMemory(
+        provider: AccountProvider,
+        orderedKeys: [String]
+    ) {
         var order: [String: Int] = [:]
-        for (index, key) in profileKeys.enumerated() where order[key] == nil {
+        for (index, key) in orderedKeys.enumerated() where order[key] == nil {
             order[key] = index
         }
+        let originalOrder = Dictionary(uniqueKeysWithValues: accounts.enumerated().map { ($1.id, $0) })
         accounts.sort { a, b in
-            let ia = a.profileKey.flatMap { order[$0] } ?? Int.max
-            let ib = b.profileKey.flatMap { order[$0] } ?? Int.max
+            guard a.accountProvider == provider, b.accountProvider == provider else {
+                return (originalOrder[a.id] ?? Int.max) < (originalOrder[b.id] ?? Int.max)
+            }
+            let leftKey = provider == .claude ? a.providerProfileID : a.profileKey
+            let rightKey = provider == .claude ? b.providerProfileID : b.profileKey
+            let ia = leftKey.flatMap { order[$0] } ?? Int.max
+            let ib = rightKey.flatMap { order[$0] } ?? Int.max
             if ia != ib { return ia < ib }
             return a.displayName.localizedCaseInsensitiveCompare(b.displayName) == .orderedAscending
         }

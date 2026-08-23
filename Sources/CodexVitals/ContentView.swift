@@ -39,7 +39,6 @@ struct ContentView: View {
                                 .frame(maxWidth: .infinity)
                         }
                         .background(Theme.listSurfaceTint)
-                        .background(.ultraThinMaterial)
                         .clipShape(RoundedRectangle(cornerRadius: Theme.panelCornerRadius, style: .continuous))
                         .overlay {
                             RoundedRectangle(cornerRadius: Theme.panelCornerRadius, style: .continuous)
@@ -81,8 +80,7 @@ struct ContentView: View {
         }
         .animation(.easeInOut(duration: 0.16), value: githubStarPrompt.isPresented)
         .frame(width: Self.preferredWidth)
-        .background(Theme.popoverSurfaceTint)
-        .background(.ultraThinMaterial)
+        .background(Color(nsColor: .windowBackgroundColor))
         .background(
             Group {
                 Button("") { isShowingSettings.toggle() }.keyboardShortcut(",", modifiers: .command)
@@ -209,28 +207,21 @@ struct HeaderView: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            if isShowingSettings {
-                HeaderActionButton(
-                    action: {
-                        isShowingSettings = false
-                    },
-                    helpText: "Back",
-                    accessibilityText: "Back to accounts"
-                ) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(.secondary)
-                }
-
-                Text("Settings")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.primary)
-
-                Spacer(minLength: 0)
-            } else if shouldShowSearchField {
+            if shouldShowSearchField && !isShowingSettings {
                 compactSearchField
             } else {
                 appBrandLockup
+
+                if isShowingSettings {
+                    Rectangle()
+                        .fill(Theme.controlBorder)
+                        .frame(width: 0.5, height: 14)
+
+                    Text("Settings")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+
                 Spacer(minLength: 0)
             }
 
@@ -248,7 +239,19 @@ struct HeaderView: View {
     @ViewBuilder
     private var toolbarControls: some View {
         HStack(spacing: 1) {
-            if !isShowingSettings {
+            if isShowingSettings {
+                HeaderActionButton(
+                    action: { isShowingSettings = false },
+                    helpText: "Close settings",
+                    accessibilityText: "Back to accounts"
+                ) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.secondary)
+                }
+
+                toolbarDivider
+            } else {
                 HeaderActionButton(
                     action: toggleSearch,
                     isSelected: shouldShowSearchField,
@@ -337,7 +340,7 @@ struct HeaderView: View {
             Capsule()
                 .stroke(Theme.toolbarBorder, lineWidth: 0.6)
         }
-        .shadow(color: .black.opacity(0.07), radius: 3, y: 1)
+        .shadow(color: .black.opacity(0.045), radius: 2.5, y: 1)
     }
 
     private var toolbarDivider: some View {
@@ -365,7 +368,7 @@ struct HeaderView: View {
                 .frame(width: 22, height: 22)
 
             Text("Codex Vitals")
-                .font(.system(size: 14, weight: .semibold))
+                .font(Theme.appTitleFont)
                 .foregroundStyle(.primary)
                 .lineLimit(1)
         }

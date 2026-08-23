@@ -126,7 +126,11 @@ struct Account: Identifiable, Equatable, Codable, Sendable {
     }
 
     var displayPlanName: String? {
-        guard !isClaudeAccount else { return nil }
+        if isClaudeAccount,
+           plan.trimmingCharacters(in: .whitespacesAndNewlines)
+            .caseInsensitiveCompare("Claude") == .orderedSame {
+            return nil
+        }
         return PlanDisplayFormatter.badgeText(for: plan)
     }
 
@@ -360,57 +364,63 @@ struct Theme {
     static let warningAccent = Color(hex: "FF9F0A")
     static let dangerAccent = Color(hex: "FF453A")
 
-    static let panelCornerRadius: CGFloat = 12
-    static let rowCornerRadius: CGFloat = 9
+    static let panelCornerRadius: CGFloat = 10
+    static let rowCornerRadius: CGFloat = 8
     static let controlCornerRadius: CGFloat = 7
+
+    static let appTitleFont = Font.system(size: 14, weight: .semibold)
+    static let sectionTitleFont = Font.system(size: 10.5, weight: .semibold)
+    static let accountTitleFont = Font.system(size: 11.5, weight: .semibold)
+    static let accountEmailFont = Font.system(size: 10.5, weight: .regular)
+    static let metadataFont = Font.system(size: 10, weight: .medium)
+    static let metricFont = Font.system(size: 10.5, weight: .semibold)
+    static let settingsLabelFont = Font.system(size: 12, weight: .medium)
 
     static let healthyText = Color(lightHex: "157D40", darkHex: "30D158")
     static let warningText = Color(lightHex: "A25800", darkHex: "FF9F0A")
     static let dangerText = Color(lightHex: "B92F27", darkHex: "FF453A")
 
-    static let popoverSurfaceTint = Color(lightHex: "12FFFFFF", darkHex: "0D000000")
-    static let toolbarSurface = Color(lightHex: "28FFFFFF", darkHex: "12FFFFFF")
-    static let toolbarBorder = Color(lightHex: "1F000000", darkHex: "2BFFFFFF")
+    static let toolbarSurface = Color(lightHex: "20FFFFFF", darkHex: "10FFFFFF")
+    static let toolbarBorder = Color(lightHex: "19000000", darkHex: "24FFFFFF")
     static let controlHoverSurface = Color(lightHex: "12000000", darkHex: "18FFFFFF")
     static let controlSelectedSurface = Color(lightHex: "1A000000", darkHex: "24FFFFFF")
     static let controlBorder = Color(lightHex: "12000000", darkHex: "20FFFFFF")
-    static let listSurfaceTint = Color(lightHex: "26FFFFFF", darkHex: "0FFFFFFF")
-    static let listBorder = Color(lightHex: "20000000", darkHex: "30FFFFFF")
-    static let listDivider = Color(lightHex: "16000000", darkHex: "20FFFFFF")
-    static let sectionSurface = Color(lightHex: "08000000", darkHex: "0FFFFFFF")
-    static let rowHoverSurface = Color(lightHex: "10000000", darkHex: "18FFFFFF")
-    static let rowHoverBorder = Color(lightHex: "12000000", darkHex: "20FFFFFF")
-    static let activeRowSurface = Color(lightHex: "1230D158", darkHex: "1630D158")
-    static let activeRowBorder = Color(lightHex: "2030D158", darkHex: "2B30D158")
-    static let metricSurface = Color(lightHex: "2EFFFFFF", darkHex: "18FFFFFF")
-    static let metricBorder = Color(lightHex: "15000000", darkHex: "2BFFFFFF")
+    static let listSurfaceTint = Color(lightHex: "16FFFFFF", darkHex: "09FFFFFF")
+    static let listBorder = Color(lightHex: "18000000", darkHex: "26FFFFFF")
+    static let listDivider = Color(lightHex: "12000000", darkHex: "1AFFFFFF")
+    static let sectionSurface = Color(lightHex: "05000000", darkHex: "0AFFFFFF")
+    static let rowHoverSurface = Color(lightHex: "0B000000", darkHex: "12FFFFFF")
+    static let rowHoverBorder = Color(lightHex: "0D000000", darkHex: "18FFFFFF")
+    static let activeRowSurface = Color(lightHex: "0D30D158", darkHex: "1230D158")
+    static let activeRowBorder = Color(lightHex: "1C30D158", darkHex: "2630D158")
+    static let metricSurface = Color(lightHex: "10000000", darkHex: "14FFFFFF")
+    static let metricBorder = Color(lightHex: "10000000", darkHex: "20FFFFFF")
     static let warningSurface = Color(lightHex: "14FF9F0A", darkHex: "1FFF9F0A")
     static let warningBorder = Color(lightHex: "33914C00", darkHex: "38FF9F0A")
+    static let dangerSurface = Color(lightHex: "12FF453A", darkHex: "1FFF453A")
+    static let dangerBorder = Color(lightHex: "32B92F27", darkHex: "38FF453A")
+    static let settingsGroupSurface = Color(lightHex: "0A000000", darkHex: "0FFFFFFF")
+    static let settingsGroupBorder = Color(lightHex: "12000000", darkHex: "1EFFFFFF")
 
     static func providerSectionSurface(for provider: AccountProvider) -> Color {
-        switch provider {
-        case .codex:
-            return Color(lightHex: "107D6AE7", darkHex: "147D6AE7")
-        case .claude:
-            return Color(lightHex: "10D97757", darkHex: "14D97757")
-        }
+        .clear
     }
 
     static func providerHeaderSurface(for provider: AccountProvider) -> Color {
         switch provider {
         case .codex:
-            return Color(lightHex: "187D6AE7", darkHex: "227D6AE7")
+            return Color(lightHex: "0C7D6AE7", darkHex: "127D6AE7")
         case .claude:
-            return Color(lightHex: "18D97757", darkHex: "22D97757")
+            return Color(lightHex: "0CD97757", darkHex: "12D97757")
         }
     }
 
     static func providerBorder(for provider: AccountProvider) -> Color {
         switch provider {
         case .codex:
-            return Color(lightHex: "287D6AE7", darkHex: "387D6AE7")
+            return Color(lightHex: "207D6AE7", darkHex: "307D6AE7")
         case .claude:
-            return Color(lightHex: "28D97757", darkHex: "38D97757")
+            return Color(lightHex: "20D97757", darkHex: "30D97757")
         }
     }
 
@@ -451,12 +461,12 @@ struct Theme {
     /// Workspace chip background.
     static func workspaceColor(for ws: String) -> Color {
         let hex = workspaceHex(for: ws)
-        return Color(lightHex: "24\(hex)", darkHex: "35\(hex)")
+        return Color(lightHex: "18\(hex)", darkHex: "26\(hex)")
     }
 
     static func workspaceBorderColor(for ws: String) -> Color {
         let hex = workspaceHex(for: ws)
-        return Color(lightHex: "35\(hex)", darkHex: "48\(hex)")
+        return Color(lightHex: "26\(hex)", darkHex: "38\(hex)")
     }
 
     /// Keep chip labels colorful while darkening or lightening the accent for contrast.

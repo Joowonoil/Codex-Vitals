@@ -303,6 +303,41 @@ final class AccountListVisibilityTests: XCTestCase {
         XCTAssertEqual(account.displayPlanName, "Plus")
     }
 
+    func testClaudeDisplayPlanNameShowsKnownPlanButHidesProviderPlaceholder() {
+        var account = Account(
+            id: "claude-native:1",
+            profileKey: nil,
+            email: "claude@example.com",
+            workspace: "Claude",
+            plan: "Max 5x",
+            sessionFree: 80,
+            weeklyFree: 80,
+            sessionResetSeconds: 0,
+            weeklyResetSeconds: 0,
+            hasError: false,
+            errorMessage: nil,
+            provider: .claude
+        )
+
+        XCTAssertEqual(account.displayPlanName, "Max 5x")
+
+        account = Account(
+            id: "claude-native:2",
+            profileKey: nil,
+            email: "fallback@example.com",
+            workspace: "Claude",
+            plan: "Claude",
+            sessionFree: 80,
+            weeklyFree: 80,
+            sessionResetSeconds: 0,
+            weeklyResetSeconds: 0,
+            hasError: false,
+            errorMessage: nil,
+            provider: .claude
+        )
+        XCTAssertNil(account.displayPlanName)
+    }
+
     func testFreeResetFormatterIncludesReturnContext() {
         let text = ResetFormatter.formatFreeReturn(seconds: 60)
 

@@ -3,6 +3,28 @@ import XCTest
 @testable import CodexVitals
 
 final class ClaudeNativeServiceTests: XCTestCase {
+    func testClaudePlanFormatterUsesOrganizationTierMetadata() {
+        XCTAssertEqual(
+            ClaudePlanFormatter.displayName(from: [
+                "organizationType": "claude_max",
+                "organizationRateLimitTier": "default_claude_max_5x",
+            ]),
+            "Max 5x"
+        )
+        XCTAssertEqual(
+            ClaudePlanFormatter.displayName(from: [
+                "organizationType": "claude_max",
+                "organizationRateLimitTier": "default_claude_max_20x",
+            ]),
+            "Max 20x"
+        )
+        XCTAssertEqual(
+            ClaudePlanFormatter.displayName(from: ["seatTier": "pro"]),
+            "Pro"
+        )
+        XCTAssertNil(ClaudePlanFormatter.displayName(from: ["billingType": "stripe_subscription"]))
+    }
+
     func testUsageResponseParsesFableFromScopedWeeklyLimits() throws {
         let data = Data(#"""
         {
@@ -91,12 +113,38 @@ final class ClaudeNativeServiceTests: XCTestCase {
             oauthAccount: oauth,
             alias: "Primary"
         )
+        let renewalDate = Date(timeIntervalSince1970: 1_800_000_000)
+        try store.updateWorkspaceAlias(workspace: "Research Lab", alias: "Lab")
+        try store.updatePlanRenewalDate(profileID: profile.id, date: renewalDate)
+        try store.setHidden(profileID: profile.id, hidden: true)
         let reloaded = try ClaudeAccountStore(storeURL: url).load()
 
         XCTAssertEqual(reloaded.count, 1)
         XCTAssertEqual(reloaded.first?.id, profile.id)
         XCTAssertEqual(reloaded.first?.alias, "Primary")
         XCTAssertEqual(reloaded.first?.email, "researcher@example.com")
+        XCTAssertEqual(reloaded.first?.workspaceAlias, "Lab")
+        XCTAssertEqual(reloaded.first?.planRenewalDate, renewalDate)
+        XCTAssertFalse(try XCTUnwrap(reloaded.first).isVisible)
+    }
+
+    func testProfileStorePersistsClaudeAccountOrder() throws {
+        let root = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("claude-accounts.json")
+        let store = ClaudeAccountStore(storeURL: url)
+        let first = try store.upsert(
+            identity: ClaudeIdentity(oauthAccount: oauthAccount(email: "first@example.com", uuid: "first")),
+            oauthAccount: oauthAccount(email: "first@example.com", uuid: "first")
+        )
+        let second = try store.upsert(
+            identity: ClaudeIdentity(oauthAccount: oauthAccount(email: "second@example.com", uuid: "second")),
+            oauthAccount: oauthAccount(email: "second@example.com", uuid: "second")
+        )
+
+        try store.updateOrder([second.id, first.id])
+
+        XCTAssertEqual(try ClaudeAccountStore(storeURL: url).load().map(\.id), [second.id, first.id])
     }
 
     func testGlobalConfigUpdatePreservesSiblingSettingsAndHomePermissions() throws {
@@ -170,6 +218,21 @@ final class ClaudeNativeServiceTests: XCTestCase {
         XCTAssertEqual(try ClaudeCredentialEnvelope(rawValue: shadow).accessToken, "live-access")
     }
 
+    func testRemovingActiveClaudeProfileHidesItWithoutLoggingClaudeOut() async throws {
+        let fixture = try makeSwitchFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+
+        try await fixture.service.removeAccount(profileID: fixture.liveProfileID)
+
+        XCTAssertFalse(try XCTUnwrap(fixture.accountStore.profile(id: fixture.liveProfileID)).isVisible)
+        XCTAssertNotNil(fixture.keychain.value(
+            service: ClaudeKeychainStore.activeService,
+            account: "tester"
+        ))
+        let result = await fixture.service.loadAccounts()
+        XCTAssertFalse(result.accounts.contains { $0.providerProfileID == fixture.liveProfileID })
+    }
+
     func testLoadRecoversInterruptedSwitchFromKeychainSafetyCredential() async throws {
         let fixture = try makeSwitchFixture()
         defer { try? FileManager.default.removeItem(at: fixture.root) }
@@ -212,7 +275,7 @@ final class ClaudeNativeServiceTests: XCTestCase {
         let accountStore = ClaudeAccountStore(storeURL: root.appendingPathComponent("accounts.json"))
         let liveOAuth = oauthAccount(email: "live@example.com", uuid: "live-account")
         let targetOAuth = oauthAccount(email: "target@example.com", uuid: "target-account")
-        _ = try accountStore.upsert(
+        let live = try accountStore.upsert(
             identity: ClaudeIdentity(oauthAccount: liveOAuth),
             oauthAccount: liveOAuth
         )
@@ -253,7 +316,9 @@ final class ClaudeNativeServiceTests: XCTestCase {
         )
         return SwitchFixture(
             root: root,
+            liveProfileID: live.id,
             targetProfileID: target.id,
+            accountStore: accountStore,
             keychain: keychain,
             config: config,
             service: service
@@ -293,7 +358,9 @@ final class ClaudeNativeServiceTests: XCTestCase {
 
 private struct SwitchFixture {
     let root: URL
+    let liveProfileID: String
     let targetProfileID: String
+    let accountStore: ClaudeAccountStore
     let keychain: FakeClaudeKeychain
     let config: FakeClaudeConfig
     let service: ClaudeAccountService
