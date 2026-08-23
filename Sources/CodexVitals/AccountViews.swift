@@ -508,6 +508,7 @@ private enum CompactRowLayout {
     static let horizontalPadding: CGFloat = 12
     static let emailMinWidth: CGFloat = 164
     static let actionWidth: CGFloat = 24
+    static let leadingControlWidth: CGFloat = 19
 
     struct Metrics {
         let spacing: CGFloat
@@ -533,7 +534,7 @@ private enum CompactRowLayout {
             + weeklyResetWidth * 2
             + spacing
             + 4
-        let fixedWidth = 16
+        let fixedWidth = leadingControlWidth
             + workspaceWidth
             + actionWidth
             + quotaAreaWidth
@@ -619,6 +620,7 @@ struct AccountCompactRow: View {
                 + layout.spacing
             HStack(alignment: .center, spacing: layout.spacing) {
                 leadingAccountControl
+                    .frame(width: CompactRowLayout.leadingControlWidth, alignment: .leading)
 
                 accountIdentityView
                     .frame(width: layout.emailWidth, alignment: .leading)
@@ -1135,6 +1137,33 @@ struct CodexIconView: View {
     }
 }
 
+struct ClaudeIconView: View {
+    var foregroundColor: Color = Theme.warningText.opacity(0.9)
+
+    private static let image: NSImage = {
+        let repositoryAsset = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("Support/ClaudeSpark.png")
+        let candidates = [
+            Bundle.main.url(forResource: "ClaudeSpark", withExtension: "png"),
+            repositoryAsset
+        ]
+        let image = candidates.compactMap { url in
+            url.flatMap { NSImage(contentsOf: $0) }
+        }.first ?? NSImage(systemSymbolName: "asterisk", accessibilityDescription: "Claude")!
+        image.size = NSSize(width: 16, height: 16)
+        image.isTemplate = true
+        return image
+    }()
+
+    var body: some View {
+        Image(nsImage: Self.image)
+            .resizable()
+            .renderingMode(.template)
+            .foregroundStyle(foregroundColor)
+            .frame(width: 16, height: 16)
+    }
+}
+
 struct ProviderIconView: View {
     let provider: AccountProvider
     var usesProviderColor = false
@@ -1149,14 +1178,11 @@ struct ProviderIconView: View {
                         : .primary.opacity(0.82)
                 )
             case .claude:
-                Image(systemName: "sparkles")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(
-                        usesProviderColor
-                            ? Theme.providerText(for: provider)
-                            : Theme.warningText.opacity(0.9)
-                    )
-                    .frame(width: 16, height: 16)
+                ClaudeIconView(
+                    foregroundColor: usesProviderColor
+                        ? Theme.providerText(for: provider)
+                        : Theme.warningText.opacity(0.9)
+                )
             }
         }
     }

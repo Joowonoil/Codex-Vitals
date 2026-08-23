@@ -58,6 +58,7 @@ ditto "$SPARKLE_FRAMEWORK" "${OUT}/Contents/Frameworks/Sparkle.framework"
 cp "${ROOT}/Support/Info.plist" "${OUT}/Contents/Info.plist"
 cp "$ICNS" "${OUT}/Contents/Resources/AppIcon.icns"
 cp "${ROOT}/Support/codex.png" "${OUT}/Contents/Resources/codex.png"
+cp "${ROOT}/Support/ClaudeSpark.png" "${OUT}/Contents/Resources/ClaudeSpark.png"
 cp "${ROOT}/Support/RamterStudioLogo.png" "${OUT}/Contents/Resources/RamterStudioLogo.png"
 cp "${ROOT}/THIRD-PARTY-NOTICES.txt" "${OUT}/Contents/Resources/THIRD-PARTY-NOTICES.txt"
 if [[ -f "${ROOT}/.build/checkouts/Sparkle/LICENSE" ]]; then

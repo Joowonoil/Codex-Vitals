@@ -112,8 +112,14 @@ struct ContentView: View {
                     Button("Add Codex Account", systemImage: "command") {
                         viewModel.addCodexAccount()
                     }
-                    Button("Add Claude Account", systemImage: "sparkles") {
+                    Button {
                         viewModel.addClaudeAccount()
+                    } label: {
+                        Label {
+                            Text("Add Claude Account")
+                        } icon: {
+                            ClaudeIconView(foregroundColor: .primary)
+                        }
                     }
                 } label: {
                     Label("Add account", systemImage: "person.badge.plus")
@@ -442,8 +448,14 @@ private struct HeaderAccountMenu: View {
             Button("Add Codex Account", systemImage: "command") {
                 vm.addCodexAccount()
             }
-            Button("Add Claude Account", systemImage: "sparkles") {
+            Button {
                 vm.addClaudeAccount()
+            } label: {
+                Label {
+                    Text("Add Claude Account")
+                } icon: {
+                    ClaudeIconView(foregroundColor: .primary)
+                }
             }
         } label: {
             Image(systemName: "person.badge.plus")

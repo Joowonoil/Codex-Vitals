@@ -1,5 +1,10 @@
 Codex Vitals includes code adapted from the following open-source projects.
 
+The Claude Spark logo is an Anthropic brand asset obtained from Anthropic's
+official press kit and is used only to identify Claude within the app.
+Claude and the Claude logo are trademarks of Anthropic PBC. Their inclusion
+does not imply affiliation with or endorsement by Anthropic.
+
 -------------------------------------------------------------------------------
 CodexBar
 https://github.com/steipete/CodexBar
