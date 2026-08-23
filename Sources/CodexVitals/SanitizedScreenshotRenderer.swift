@@ -250,7 +250,7 @@ private struct SanitizedProductScreenshot: View {
             .padding(.vertical, 7)
         }
         .frame(width: 652, height: 360)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(Theme.appBackground)
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
@@ -270,27 +270,31 @@ private struct SanitizedProductScreenshot: View {
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
                         .stroke(Color.primary.opacity(0.12), lineWidth: 0.5)
                 }
-            Text("Codex Vitals")
-                .font(Theme.appTitleFont)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Codex Vitals")
+                    .font(Theme.appTitleFont)
+                Text("by RamterStudio")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
             Spacer(minLength: 0)
             HStack(spacing: 1) {
                 headerIcon("magnifyingglass")
                 headerIcon("person.badge.plus", color: Theme.healthyAccent)
-                headerIcon("rectangle.3.group")
                 headerIcon("arrow.clockwise")
                 Rectangle()
                     .fill(Theme.controlBorder)
                     .frame(width: 0.5, height: 14)
                     .padding(.horizontal, 1)
                 headerIcon("gearshape")
-                headerIcon("power")
             }
             .padding(3)
-            .background(Theme.toolbarSurface)
-            .background(.ultraThinMaterial)
+            .background(.thinMaterial, in: Capsule())
+            .background(Theme.toolbarSurface, in: Capsule())
             .clipShape(Capsule())
-            .overlay { Capsule().stroke(Theme.toolbarBorder, lineWidth: 0.6) }
-            .shadow(color: .black.opacity(0.045), radius: 2.5, y: 1)
+            .overlay { Capsule().stroke(Theme.toolbarBorder, lineWidth: 0.7) }
+            .shadow(color: .white.opacity(0.24), radius: 0.7, y: -0.5)
+            .shadow(color: .black.opacity(0.08), radius: 3, y: 1.5)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
@@ -301,7 +305,7 @@ private struct SanitizedProductScreenshot: View {
         Image(systemName: name)
             .font(.system(size: 13, weight: .medium))
             .foregroundColor(color)
-            .frame(width: 26, height: 24)
+            .frame(width: 28, height: 28)
     }
 }
 #endif

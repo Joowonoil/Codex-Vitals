@@ -2,6 +2,15 @@
 
 All notable changes to Codex Vitals will be documented here.
 
+## 1.6.0 - 2026-08-24
+
+- Refined the header and Settings with the quieter RamterStudio family design, a reduced semi-glass toolbar, clearer card hierarchy, and `by RamterStudio` branding.
+- Moved workspace grouping and Quit out of the primary toolbar and into Settings without removing either function.
+- Added explicit Usage and Manual account order modes, preserving the existing usage-based recommendation order when Usage is selected.
+- Replaced row context-menu movement commands with drag-and-drop ordering that switches to Manual after the first successful drop.
+- Kept drag ordering separate for Codex and Claude and constrained grouped rows to their current workspace.
+- Renamed the ambiguous Priority strip to Reset Soon and replaced its flame with a clock.
+
 ## 1.5.0 - 2026-08-23
 
 - Refined the macOS account list and Settings layout with clearer hierarchy, reduced glass effects, consistent typography, and tighter spacing.

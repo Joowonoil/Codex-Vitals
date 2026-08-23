@@ -80,7 +80,7 @@ struct ContentView: View {
         }
         .animation(.easeInOut(duration: 0.16), value: githubStarPrompt.isPresented)
         .frame(width: Self.preferredWidth)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(Theme.appBackground)
         .background(
             Group {
                 Button("") { isShowingSettings.toggle() }.keyboardShortcut(",", modifiers: .command)
@@ -213,29 +213,24 @@ struct HeaderView: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            if shouldShowSearchField && !isShowingSettings {
+            if isShowingSettings {
+                settingsTitle
+                Spacer(minLength: 0)
+            } else if shouldShowSearchField {
                 compactSearchField
             } else {
                 appBrandLockup
-
-                if isShowingSettings {
-                    Rectangle()
-                        .fill(Theme.controlBorder)
-                        .frame(width: 0.5, height: 14)
-
-                    Text("Settings")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
-
                 Spacer(minLength: 0)
             }
 
-            toolbarControls
+            if !isShowingSettings {
+                toolbarControls
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .frame(height: 48)
+        .background(Theme.headerSurface)
         .animation(.easeInOut(duration: 0.16), value: shouldShowSearchField)
         .onReceive(vm.$isLoading.dropFirst()) { isLoading in
             handleLoadingChange(isLoading)
@@ -245,108 +240,93 @@ struct HeaderView: View {
     @ViewBuilder
     private var toolbarControls: some View {
         HStack(spacing: 1) {
-            if isShowingSettings {
+            HeaderActionButton(
+                action: toggleSearch,
+                isSelected: shouldShowSearchField,
+                helpText: shouldShowSearchField ? "Hide search" : "Search",
+                accessibilityText: shouldShowSearchField ? "Hide search" : "Search accounts"
+            ) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(shouldShowSearchField ? Theme.brandAccent : .secondary)
+            }
+
+            if vm.isAddingAccount {
                 HeaderActionButton(
-                    action: { isShowingSettings = false },
-                    helpText: "Close settings",
-                    accessibilityText: "Back to accounts"
+                    action: { vm.cancelRelogin() },
+                    isSelected: true,
+                    helpText: "Cancel adding account",
+                    accessibilityText: "Cancel adding account"
                 ) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 12, weight: .semibold))
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 13, weight: .medium))
                         .foregroundColor(.secondary)
                 }
-
-                toolbarDivider
             } else {
-                HeaderActionButton(
-                    action: toggleSearch,
-                    isSelected: shouldShowSearchField,
-                    helpText: shouldShowSearchField ? "Hide search" : "Search",
-                    accessibilityText: shouldShowSearchField ? "Hide search" : "Search accounts"
-                ) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(shouldShowSearchField ? .primary : .secondary)
-                }
+                HeaderAccountMenu(vm: vm)
+            }
 
-                if vm.isAddingAccount {
-                    HeaderActionButton(
-                        action: { vm.cancelRelogin() },
-                        isSelected: true,
-                        helpText: "Cancel adding account",
-                        accessibilityText: "Cancel adding account"
-                    ) {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(.secondary)
-                    }
+            HeaderActionButton(
+                action: requestRefresh,
+                isDisabled: vm.isLoading,
+                helpText: showsRefreshSuccess ? "Updated" : "Refresh",
+                accessibilityText: showsRefreshSuccess ? "Usage updated" : "Refresh all accounts"
+            ) {
+                if vm.isLoading {
+                    ProgressView()
+                        .controlSize(.mini)
+                } else if showsRefreshSuccess {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 13))
+                        .foregroundColor(Theme.healthyAccent)
                 } else {
-                    HeaderAccountMenu(vm: vm)
-                }
-
-                HeaderActionButton(
-                    action: { vm.toggleGroupByWorkspace() },
-                    isSelected: vm.groupByWorkspace,
-                    helpText: vm.groupByWorkspace ? "Ungroup workspaces" : "Group by workspace",
-                    accessibilityText: vm.groupByWorkspace ? "Ungroup workspaces" : "Group accounts by workspace"
-                ) {
-                    Image(systemName: "rectangle.3.group")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(vm.groupByWorkspace ? .primary : .secondary)
-                }
-
-                HeaderActionButton(
-                    action: requestRefresh,
-                    isDisabled: vm.isLoading,
-                    helpText: showsRefreshSuccess ? "Updated" : "Refresh",
-                    accessibilityText: showsRefreshSuccess ? "Usage updated" : "Refresh all accounts"
-                ) {
-                    if vm.isLoading {
-                        ProgressView()
-                            .controlSize(.mini)
-                    } else if showsRefreshSuccess {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 13))
-                            .foregroundColor(Theme.healthyAccent)
-                    } else {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(.secondary)
-                    }
-                }
-
-                toolbarDivider
-
-                HeaderActionButton(
-                    action: { isShowingSettings = true },
-                    helpText: "Settings",
-                    accessibilityText: "Settings"
-                ) {
-                    Image(systemName: "gearshape")
+                    Image(systemName: "arrow.clockwise")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundColor(.secondary)
                 }
             }
 
+            toolbarDivider
+
             HeaderActionButton(
-                action: { NSApp.terminate(nil) },
-                helpText: "Quit Codex Vitals",
-                accessibilityText: "Quit Codex Vitals"
+                action: { isShowingSettings = true },
+                helpText: "Settings",
+                accessibilityText: "Settings"
             ) {
-                Image(systemName: "power")
+                Image(systemName: "gearshape")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundColor(.secondary)
             }
         }
         .padding(3)
-        .background(Theme.toolbarSurface)
-        .background(.ultraThinMaterial)
+        .background(.thinMaterial, in: Capsule())
+        .background(Theme.toolbarSurface, in: Capsule())
         .clipShape(Capsule())
         .overlay {
-            Capsule()
-                .stroke(Theme.toolbarBorder, lineWidth: 0.6)
+            Capsule().stroke(Theme.toolbarBorder, lineWidth: 0.7)
         }
-        .shadow(color: .black.opacity(0.045), radius: 2.5, y: 1)
+        .shadow(color: .white.opacity(0.24), radius: 0.7, y: -0.5)
+        .shadow(color: .black.opacity(0.08), radius: 3, y: 1.5)
+    }
+
+    private var settingsTitle: some View {
+        HStack(spacing: 8) {
+            Button {
+                isShowingSettings = false
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Back to accounts")
+
+            Text("Settings")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.primary)
+        }
     }
 
     private var toolbarDivider: some View {
@@ -373,10 +353,16 @@ struct HeaderView: View {
             AppBrandIcon()
                 .frame(width: 22, height: 22)
 
-            Text("Codex Vitals")
-                .font(Theme.appTitleFont)
-                .foregroundStyle(.primary)
-                .lineLimit(1)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Codex Vitals")
+                    .font(Theme.appTitleFont)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Text("by RamterStudio")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
         }
         .fixedSize()
         .help("Codex Vitals")
@@ -461,7 +447,7 @@ private struct HeaderAccountMenu: View {
             Image(systemName: "person.badge.plus")
                 .font(.system(size: 13, weight: .medium))
                 .foregroundColor(Theme.healthyAccent)
-                .frame(width: 26, height: 24)
+                .frame(width: 28, height: 28)
                 .background {
                     RoundedRectangle(cornerRadius: Theme.controlCornerRadius, style: .continuous)
                         .fill(isHovered ? Theme.controlHoverSurface : .clear)
@@ -476,7 +462,7 @@ private struct HeaderAccountMenu: View {
         .fixedSize()
         .disabled(vm.hasPendingAccountAction)
         .opacity(vm.hasPendingAccountAction ? 0.55 : 1)
-        .scaleEffect(isHovered && !vm.hasPendingAccountAction ? 1.035 : 1)
+        .scaleEffect(isHovered && !vm.hasPendingAccountAction ? 1.02 : 1)
         .animation(.easeOut(duration: 0.12), value: isHovered)
         .onHover { isHovered = $0 }
         .help("Add account")
@@ -512,7 +498,7 @@ private struct HeaderActionButton<Label: View>: View {
     var body: some View {
         Button(action: action) {
             label
-                .frame(width: 26, height: 24)
+                .frame(width: 28, height: 28)
                 .background {
                     RoundedRectangle(cornerRadius: Theme.controlCornerRadius, style: .continuous)
                         .fill(controlSurface)
@@ -526,8 +512,9 @@ private struct HeaderActionButton<Label: View>: View {
         .buttonStyle(.plain)
         .disabled(isDisabled)
         .opacity(isDisabled ? 0.55 : 1)
-        .scaleEffect(isHovered && !isDisabled ? 1.035 : 1)
+        .scaleEffect(isSelected ? 1.02 : (isHovered && !isDisabled ? 1.02 : 1))
         .animation(.easeOut(duration: 0.12), value: isHovered)
+        .animation(.easeOut(duration: 0.16), value: isSelected)
         .onHover { isHovered = $0 }
         .help(helpText)
         .accessibilityLabel(accessibilityText)
@@ -541,7 +528,10 @@ private struct HeaderActionButton<Label: View>: View {
     }
 
     private var controlBorder: Color {
-        isSelected || isHovered ? Theme.controlBorder : .clear
+        if isSelected {
+            return Theme.controlSelectedBorder
+        }
+        return isHovered ? Theme.controlBorder : .clear
     }
 }
 

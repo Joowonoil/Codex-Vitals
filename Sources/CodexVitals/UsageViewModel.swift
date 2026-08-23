@@ -2,11 +2,6 @@ import AppKit
 import Combine
 import Foundation
 
-enum AccountMoveDirection {
-    case up
-    case down
-}
-
 /// Central state holder observed by all SwiftUI views.
 @MainActor
 final class UsageViewModel: ObservableObject {
@@ -34,6 +29,12 @@ final class UsageViewModel: ObservableObject {
     @Published var listDensity: ListDensity = .compact {
         didSet { UserDefaults.standard.set(listDensity.rawValue, forKey: "listDensity") }
     }
+    @Published var accountSortMode: AccountSortMode = .stored() {
+        didSet {
+            guard oldValue != accountSortMode else { return }
+            accountSortMode.save()
+        }
+    }
     @Published var autoRefreshInterval: AutoRefreshInterval = .stored {
         didSet {
             guard oldValue != autoRefreshInterval else { return }
@@ -48,7 +49,6 @@ final class UsageViewModel: ObservableObject {
     @Published private(set) var resetNotificationStatusMessage: String?
     @Published var waitingForResetCollapsed = false
     @Published var freeWaitingCollapsed = true
-    @Published private var usesManualAccountOrder = false
 
     // MARK: - Internals
 
@@ -65,7 +65,6 @@ final class UsageViewModel: ObservableObject {
     private var pendingRefreshAfterCurrent = false
     private var pendingForceMetadataRefreshAfterCurrent = false
     private var pendingResetNotificationCheck = false
-    private let manualAccountOrderKey = "manualAccountOrderingEnabled"
     private let resetNotificationsEnabledKey = "usageResetNotificationsEnabled"
 
     // MARK: - Init
@@ -76,7 +75,6 @@ final class UsageViewModel: ObservableObject {
             groupByWorkspace = UserDefaults.standard.bool(forKey: "groupByWorkspace")
         }
         UserDefaults.standard.removeObject(forKey: "accountInformationMode")
-        usesManualAccountOrder = UserDefaults.standard.bool(forKey: manualAccountOrderKey)
         listDensity = .compact
         if let snap = AccountSnapshotStore.load() {
             accounts = snap.accounts
@@ -99,6 +97,10 @@ final class UsageViewModel: ObservableObject {
     private var searchFiltered: [Account] {
         guard !searchText.isEmpty else { return visibleAccounts }
         return visibleAccounts.filter { Self.matchesSearch($0, searchText: searchText) }
+    }
+
+    private var usesManualAccountOrder: Bool {
+        accountSortMode == .manual
     }
 
     static func matchesSearch(_ account: Account, searchText: String) -> Bool {
@@ -663,72 +665,117 @@ final class UsageViewModel: ObservableObject {
         }
     }
 
-    func canMoveAccount(_ account: Account, direction: AccountMoveDirection) -> Bool {
+    func canReorderAccount(_ account: Account) -> Bool {
         let hasStoredProfile = account.isClaudeAccount
             ? account.providerProfileID != nil
             : account.profileKey != nil
-        guard searchText.isEmpty, hasStoredProfile else { return false }
-        let rows = movableAccountRows(provider: account.accountProvider)
-        guard let index = rows.firstIndex(where: { $0.id == account.id }) else { return false }
-        switch direction {
-        case .up:
-            return index > 0
-        case .down:
-            return index < rows.count - 1
-        }
+        return searchText.isEmpty && hasStoredProfile
     }
 
-    func moveAccount(_ account: Account, direction: AccountMoveDirection) {
+    @discardableResult
+    func reorderAccount(
+        draggedAccountID: String,
+        targetAccountID: String,
+        placeAfterTarget: Bool
+    ) -> Bool {
         guard searchText.isEmpty else {
             accountActionError = "Clear search before reordering accounts."
-            return
-        }
-        let hasStoredProfile = account.isClaudeAccount
-            ? account.providerProfileID != nil
-            : account.profileKey != nil
-        guard hasStoredProfile else {
-            accountActionError = "Account has no local profile to reorder."
-            return
+            return false
         }
 
-        var rows = movableAccountRows(provider: account.accountProvider)
-        guard let index = rows.firstIndex(where: { $0.id == account.id }) else { return }
-        let destination: Int
-        switch direction {
-        case .up:
-            destination = index - 1
-        case .down:
-            destination = index + 1
+        guard draggedAccountID != targetAccountID,
+              let draggedAccount = accounts.first(where: { $0.id == draggedAccountID }),
+              let targetAccount = accounts.first(where: { $0.id == targetAccountID }),
+              draggedAccount.accountProvider == targetAccount.accountProvider,
+              canReorderAccount(draggedAccount),
+              canReorderAccount(targetAccount) else {
+            return false
         }
-        guard rows.indices.contains(destination) else { return }
+        if groupByWorkspace && draggedAccount.workspace != targetAccount.workspace {
+            accountActionError = "Accounts can be reordered only within the same workspace while grouping is enabled."
+            return false
+        }
+        guard reorderSection(for: draggedAccount) == reorderSection(for: targetAccount) else {
+            accountActionError = "Accounts can be reordered only within the same usage section."
+            return false
+        }
 
-        rows.swapAt(index, destination)
-        if account.isClaudeAccount {
-            let orderedProfileIDs = rows.compactMap(\.providerProfileID)
+        let provider = draggedAccount.accountProvider
+        let rows = movableAccountRows(provider: provider)
+        let currentIDs = rows.map(\.id)
+        let reorderedIDs = Self.reorderedIDs(
+            currentIDs,
+            moving: draggedAccountID,
+            relativeTo: targetAccountID,
+            placeAfterTarget: placeAfterTarget
+        )
+        guard reorderedIDs != currentIDs else { return false }
+
+        let rowsByID = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
+        let reorderedRows = reorderedIDs.compactMap { rowsByID[$0] }
+        switch provider {
+        case .codex:
+            let orderedProfileKeys = reorderedRows.compactMap(\.profileKey)
+            guard !orderedProfileKeys.isEmpty else { return false }
+            do {
+                try AccountProfileStore.updateDefaultOrder(orderedProfileKeys)
+                applyManualOrder(provider: provider, orderedKeys: orderedProfileKeys)
+                return true
+            } catch {
+                accountActionError = error.localizedDescription
+                return false
+            }
+        case .claude:
+            let orderedProfileIDs = reorderedRows.compactMap(\.providerProfileID)
+            guard !orderedProfileIDs.isEmpty else { return false }
             Task {
                 do {
                     try await claudeService.updateOrder(profileIDs: orderedProfileIDs)
-                    reorderAccountsInMemory(
-                        provider: .claude,
-                        orderedKeys: orderedProfileIDs
-                    )
-                    AccountSnapshotStore.save(accounts: accounts, lastRefresh: lastRefresh)
+                    applyManualOrder(provider: provider, orderedKeys: orderedProfileIDs)
                 } catch {
                     accountActionError = error.localizedDescription
                 }
             }
-        } else {
-            let orderedProfileKeys = rows.compactMap(\.profileKey)
-            do {
-                try AccountProfileStore.updateDefaultOrder(orderedProfileKeys)
-                UserDefaults.standard.set(true, forKey: manualAccountOrderKey)
-                usesManualAccountOrder = true
-                reorderAccountsInMemory(provider: .codex, orderedKeys: orderedProfileKeys)
-                AccountSnapshotStore.save(accounts: accounts, lastRefresh: lastRefresh)
-            } catch {
-                accountActionError = error.localizedDescription
-            }
+            return true
         }
+    }
+
+    static func reorderedIDs(
+        _ ids: [String],
+        moving movingID: String,
+        relativeTo targetID: String,
+        placeAfterTarget: Bool
+    ) -> [String] {
+        guard let sourceIndex = ids.firstIndex(of: movingID),
+              let targetIndex = ids.firstIndex(of: targetID),
+              sourceIndex != targetIndex else {
+            return ids
+        }
+
+        var reordered = ids
+        let moving = reordered.remove(at: sourceIndex)
+        var destination = targetIndex + (placeAfterTarget ? 1 : 0)
+        if sourceIndex < destination {
+            destination -= 1
+        }
+        reordered.insert(moving, at: min(max(0, destination), reordered.count))
+        return reordered
+    }
+
+    private func applyManualOrder(provider: AccountProvider, orderedKeys: [String]) {
+        reorderAccountsInMemory(provider: provider, orderedKeys: orderedKeys)
+        accountSortMode = .manual
+        AccountSnapshotStore.save(accounts: accounts, lastRefresh: lastRefresh)
+    }
+
+    private func reorderSection(for account: Account) -> Int {
+        if account.isFreeWaitingForReset { return 2 }
+        if !account.isUsableForCodex { return 1 }
+        return 0
+    }
+
+    func setAccountSortMode(_ mode: AccountSortMode) {
+        accountSortMode = mode
     }
 
     private func movableAccountRows(provider: AccountProvider) -> [Account] {
@@ -752,17 +799,22 @@ final class UsageViewModel: ObservableObject {
         for (index, key) in orderedKeys.enumerated() where order[key] == nil {
             order[key] = index
         }
-        let originalOrder = Dictionary(uniqueKeysWithValues: accounts.enumerated().map { ($1.id, $0) })
-        accounts.sort { a, b in
-            guard a.accountProvider == provider, b.accountProvider == provider else {
-                return (originalOrder[a.id] ?? Int.max) < (originalOrder[b.id] ?? Int.max)
-            }
+        let reorderedProviderAccounts = accounts
+            .filter { $0.accountProvider == provider }
+            .sorted { a, b in
             let leftKey = provider == .claude ? a.providerProfileID : a.profileKey
             let rightKey = provider == .claude ? b.providerProfileID : b.profileKey
             let ia = leftKey.flatMap { order[$0] } ?? Int.max
             let ib = rightKey.flatMap { order[$0] } ?? Int.max
             if ia != ib { return ia < ib }
             return a.displayName.localizedCaseInsensitiveCompare(b.displayName) == .orderedAscending
+        }
+
+        var providerIndex = 0
+        accounts = accounts.map { account in
+            guard account.accountProvider == provider else { return account }
+            defer { providerIndex += 1 }
+            return reorderedProviderAccounts[providerIndex]
         }
     }
 

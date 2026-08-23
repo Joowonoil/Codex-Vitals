@@ -426,6 +426,43 @@ final class AccountListVisibilityTests: XCTestCase {
         ])
     }
 
+    func testAccountSortModeMigratesAndPersistsLegacyManualSetting() {
+        let suiteName = "AccountSortModeTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        defaults.set(true, forKey: AccountSortMode.legacyManualOrderKey)
+        XCTAssertEqual(AccountSortMode.stored(in: defaults), .manual)
+
+        AccountSortMode.usage.save(in: defaults)
+        XCTAssertEqual(AccountSortMode.stored(in: defaults), .usage)
+        XCTAssertFalse(defaults.bool(forKey: AccountSortMode.legacyManualOrderKey))
+    }
+
+    @MainActor
+    func testDragReorderPlacesAccountBeforeOrAfterTarget() {
+        let ids = ["a", "b", "c", "d"]
+
+        XCTAssertEqual(
+            UsageViewModel.reorderedIDs(
+                ids,
+                moving: "d",
+                relativeTo: "b",
+                placeAfterTarget: false
+            ),
+            ["a", "d", "b", "c"]
+        )
+        XCTAssertEqual(
+            UsageViewModel.reorderedIDs(
+                ids,
+                moving: "a",
+                relativeTo: "c",
+                placeAfterTarget: true
+            ),
+            ["b", "c", "a", "d"]
+        )
+    }
+
     private func makeAccount(id: String, email: String, hasError: Bool) -> Account {
         Account(
             id: id,

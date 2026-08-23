@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Joowonoil/Codex-Vitals/releases/download/v1.5.0/CodexVitals-1.5.0.dmg"><strong>Download for macOS</strong></a>
+  <a href="https://github.com/Joowonoil/Codex-Vitals/releases/download/v1.6.0/CodexVitals-1.6.0.dmg"><strong>Download for macOS</strong></a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
   <a href="https://github.com/Joowonoil/Codex-Vitals/releases/download/windows-v1.0.0/CodexVitals-Windows-1.0.0-Setup.exe"><strong>Download for Windows</strong></a>
 </p>
@@ -31,7 +31,7 @@
 - View best-effort Codex quota and usage across all your accounts
 - Group accounts by workspace/team
 - Add local display aliases so personal accounts are easy to identify
-- Reorder accounts manually from the row context menu
+- Choose Usage or Manual account order and drag rows into place; the first successful drop automatically enables Manual order
 - Instantly see which account is active
 - Switch the active account used by Codex CLI and the desktop app with one click
 - View Claude 5-hour and 7-day limits, available Fable 5 weekly usage, detected plans, workspace labels, and optional plan renewal dates on macOS
@@ -59,7 +59,7 @@
 - **Settings Panel** — Manage Launch at Login, usage refresh, reset notifications, and application updates inside the menu bar popover
 - **Signed Automatic Updates** — Sparkle on macOS and WinSparkle on direct Windows builds verify EdDSA signatures before installation
 - **Network-Friendly Refresh** — Automatic usage refresh defaults to 10 minutes, metadata is cached, and account requests are throttled
-- **Smart Ordering** — Accounts are implicitly ranked by a composite score so the "best account to use now" surfaces to the top
+- **Usage or Manual Ordering** — Keep the usage-based recommendation order or drag rows into a persistent manual order, independently within Codex and Claude
 
 ## Check, Switch, and Continue
 
@@ -72,12 +72,13 @@ Codex Vitals is designed for using several accounts in rotation without losing t
 
 The conversation and workspace context remain available, while new requests use the switched account's limits and permissions. Switching is always manual. Codex Vitals backs up the local state before applying the selected profile and relaunches the supported desktop app; a running CLI session may close during the handoff.
 
-## Smart Ordering
+## Account Ordering
 
-Codex Vitals automatically re-orders your accounts so the best one to use right now appears first.
+Choose **Usage** in Settings to keep the best account to use now near the top, or choose **Manual** to preserve your own order. Dragging a row automatically switches to Manual.
 
 - **Smart score** — Uses the lowest remaining balance among the quota windows currently reported by OpenAI; the account with the highest bottlenecked balance wins.
-- **Priority strip** — Accounts with useful balance whose weekly window resets in less than 24 hours get a temporary urgency boost and appear in a dedicated top section.
+- **Reset Soon strip** — In Usage order, accounts with useful balance whose weekly window resets in less than 24 hours appear in a dedicated top section.
+- **Manual order** — Drag rows within Codex or Claude to persist a provider-specific order. With workspace grouping enabled, rows stay inside their current workspace.
 - **Exhausted accounts** — Sorted by who resets first, so you know which one will be usable again soonest.
 - **Free reset group** — Free-plan accounts waiting for session reset are grouped separately so daily-use paid/workspace accounts stay easier to scan.
 

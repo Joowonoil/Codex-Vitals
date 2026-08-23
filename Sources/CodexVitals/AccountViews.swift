@@ -228,31 +228,100 @@ struct AccountListView: View {
 
     @ViewBuilder
     private func accountRow(for acc: Account) -> some View {
-        AccountCompactRow(
-            account: acc,
-            needsRelogin: vm.needsRelogin(acc),
-            isRelogging: vm.isRelogging(acc),
-            isReloginBlocked: vm.hasPendingAccountAction && !vm.isRelogging(acc),
-            isSwitchingAccount: vm.isSwitchingAccount(acc),
-            isActiveAccount: vm.isActiveAccount(acc),
-            showsSwitchControls: vm.showsSwitchControls(for: acc),
-            canSwitchAccount: vm.canSwitchAccount(acc),
-            isSwitchBlocked: vm.hasPendingAccountAction && !vm.isSwitchingAccount(acc),
-            isRemoving: vm.isRemoving(acc),
-            isRemoveBlocked: vm.hasPendingAccountAction && !vm.isRemoving(acc),
-            allowsRemoval: true,
-            allowsAlias: true,
-            canMoveUp: vm.canMoveAccount(acc, direction: .up),
-            canMoveDown: vm.canMoveAccount(acc, direction: .down),
-            relogin: { vm.relogin(acc) },
-            cancelRelogin: { vm.cancelRelogin() },
-            switchAccount: { vm.switchAccount(to: acc) },
-            removeAccount: { vm.removeAccount(acc) },
-            setAlias: { vm.setAlias($0, for: acc) },
-            setPlanRenewalDate: { vm.setPlanRenewalDate($0, for: acc) },
-            moveUp: { vm.moveAccount(acc, direction: .up) },
-            moveDown: { vm.moveAccount(acc, direction: .down) }
-        )
+        ReorderableAccountRow(account: acc, viewModel: vm) {
+            AccountCompactRow(
+                account: acc,
+                needsRelogin: vm.needsRelogin(acc),
+                isRelogging: vm.isRelogging(acc),
+                isReloginBlocked: vm.hasPendingAccountAction && !vm.isRelogging(acc),
+                isSwitchingAccount: vm.isSwitchingAccount(acc),
+                isActiveAccount: vm.isActiveAccount(acc),
+                showsSwitchControls: vm.showsSwitchControls(for: acc),
+                canSwitchAccount: vm.canSwitchAccount(acc),
+                isSwitchBlocked: vm.hasPendingAccountAction && !vm.isSwitchingAccount(acc),
+                isRemoving: vm.isRemoving(acc),
+                isRemoveBlocked: vm.hasPendingAccountAction && !vm.isRemoving(acc),
+                allowsRemoval: true,
+                allowsAlias: true,
+                allowsReordering: vm.canReorderAccount(acc),
+                relogin: { vm.relogin(acc) },
+                cancelRelogin: { vm.cancelRelogin() },
+                switchAccount: { vm.switchAccount(to: acc) },
+                removeAccount: { vm.removeAccount(acc) },
+                setAlias: { vm.setAlias($0, for: acc) },
+                setPlanRenewalDate: { vm.setPlanRenewalDate($0, for: acc) }
+            )
+        }
+    }
+}
+
+private struct ReorderableAccountRow<Content: View>: View {
+    let account: Account
+    @ObservedObject var viewModel: UsageViewModel
+    let content: Content
+    @State private var isDropTarget = false
+
+    init(
+        account: Account,
+        viewModel: UsageViewModel,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.account = account
+        self.viewModel = viewModel
+        self.content = content()
+    }
+
+    @ViewBuilder
+    var body: some View {
+        if viewModel.canReorderAccount(account) {
+            content
+                .draggable(account.id) {
+                    dragPreview
+                }
+                .dropDestination(for: String.self) { accountIDs, location in
+                    guard let draggedAccountID = accountIDs.first else { return false }
+                    return viewModel.reorderAccount(
+                        draggedAccountID: draggedAccountID,
+                        targetAccountID: account.id,
+                        placeAfterTarget: location.y > rowHeight / 2
+                    )
+                } isTargeted: { isTargeted in
+                    isDropTarget = isTargeted
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: Theme.rowCornerRadius, style: .continuous)
+                        .stroke(Theme.brandAccent.opacity(isDropTarget ? 0.72 : 0), lineWidth: 1)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 2)
+                }
+                .animation(.easeOut(duration: 0.12), value: isDropTarget)
+        } else {
+            content
+        }
+    }
+
+    private var rowHeight: CGFloat {
+        let baseHeight: CGFloat = account.hasDisplayAlias ? 40 : 34
+        let fableHeight: CGFloat = account.isClaudeAccount && account.fableQuotaWindow != nil ? 22 : 0
+        return baseHeight + fableHeight
+    }
+
+    private var dragPreview: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "line.3.horizontal")
+                .foregroundStyle(Theme.brandAccent)
+            Text(account.displayName)
+                .font(Theme.accountTitleFont)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 32)
+        .background(Theme.settingsGroupSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Theme.settingsGroupBorder, lineWidth: 0.7)
+        }
     }
 }
 
@@ -322,10 +391,10 @@ struct PrioritySeparatorHeader: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: "flame.fill")
+            Image(systemName: "clock")
                 .font(.system(size: 10, weight: .medium))
                 .foregroundColor(Theme.warningText)
-            Text("PRIORITY (\(count))")
+            Text("RESET SOON (\(count))")
                 .font(.system(size: 10, weight: .medium))
                 .foregroundColor(.secondary)
                 .textCase(.uppercase)
@@ -400,10 +469,6 @@ struct FreeWaitingGroupHeader: View {
 struct AccountRow: View {
     let account: Account
     var setAlias: (String?) -> Void = { _ in }
-    var canMoveUp = false
-    var canMoveDown = false
-    var moveUp: () -> Void = {}
-    var moveDown: () -> Void = {}
     @State private var hovered = false
 
     private var exhausted: Bool { account.isWeeklyExhausted }
@@ -441,18 +506,6 @@ struct AccountRow: View {
         .background(hovered ? Color.primary.opacity(0.06) : .clear)
         .onHover { hovered = $0 }
         .contextMenu {
-            if !account.isClaudeAccount {
-                Button("Move Up") {
-                    moveUp()
-                }
-                .disabled(!canMoveUp)
-                Button("Move Down") {
-                    moveDown()
-                }
-                .disabled(!canMoveDown)
-                Divider()
-                Divider()
-            }
             Button(account.hasDisplayAlias ? "Edit Alias..." : "Set Alias...") {
                 AccountAliasPrompt.edit(account: account, save: setAlias)
             }
@@ -569,16 +622,13 @@ struct AccountCompactRow: View {
     let isRemoveBlocked: Bool
     let allowsRemoval: Bool
     let allowsAlias: Bool
-    let canMoveUp: Bool
-    let canMoveDown: Bool
+    let allowsReordering: Bool
     let relogin: () -> Void
     let cancelRelogin: () -> Void
     let switchAccount: () -> Void
     let removeAccount: () -> Void
     let setAlias: (String?) -> Void
     let setPlanRenewalDate: (Date?) -> Void
-    let moveUp: () -> Void
-    let moveDown: () -> Void
     @State private var hovered = false
     @State private var isShowingRemovalConfirmation = false
 
@@ -670,15 +720,6 @@ struct AccountCompactRow: View {
         .animation(.easeOut(duration: 0.12), value: hovered)
         .contextMenu {
             if allowsAlias {
-                Button("Move Up") {
-                    moveUp()
-                }
-                .disabled(!canMoveUp)
-                Button("Move Down") {
-                    moveDown()
-                }
-                .disabled(!canMoveDown)
-                Divider()
                 Button(account.hasDisplayAlias ? "Edit Alias..." : "Set Alias...") {
                     AccountAliasPrompt.edit(account: account, save: setAlias)
                 }
@@ -775,7 +816,16 @@ struct AccountCompactRow: View {
     @ViewBuilder
     private var leadingAccountControl: some View {
         Group {
-            if showsSwitchControls && isActiveAccount {
+            if isRemoving {
+                ProgressView()
+                    .controlSize(.mini)
+                    .scaleEffect(0.6)
+            } else if hovered && allowsReordering {
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Theme.brandAccent)
+                    .help("Drag to reorder")
+            } else if showsSwitchControls && isActiveAccount {
                 ProviderIconView(provider: account.accountProvider)
                     .overlay(alignment: .bottomTrailing) {
                         Image(systemName: "checkmark.circle.fill")
@@ -784,10 +834,6 @@ struct AccountCompactRow: View {
                             .background(Circle().fill(.black.opacity(0.72)))
                     }
                     .help("Active in \(account.accountProvider.displayName)")
-            } else if isRemoving {
-                ProgressView()
-                    .controlSize(.mini)
-                    .scaleEffect(0.6)
             } else if hovered && allowsRemoval {
                 Button {
                     isShowingRemovalConfirmation = true

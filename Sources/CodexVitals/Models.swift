@@ -290,6 +290,36 @@ enum ListDensity: String {
     case compact
 }
 
+enum AccountSortMode: String, CaseIterable, Identifiable {
+    case usage
+    case manual
+
+    static let userDefaultsKey = "accountSortMode"
+    static let legacyManualOrderKey = "manualAccountOrderingEnabled"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .usage: return "Usage"
+        case .manual: return "Manual"
+        }
+    }
+
+    static func stored(in defaults: UserDefaults = .standard) -> AccountSortMode {
+        if let rawValue = defaults.string(forKey: userDefaultsKey),
+           let mode = AccountSortMode(rawValue: rawValue) {
+            return mode
+        }
+        return defaults.bool(forKey: legacyManualOrderKey) ? .manual : .usage
+    }
+
+    func save(in defaults: UserDefaults = .standard) {
+        defaults.set(rawValue, forKey: Self.userDefaultsKey)
+        defaults.set(self == .manual, forKey: Self.legacyManualOrderKey)
+    }
+}
+
 enum AutoRefreshInterval: Int, CaseIterable, Identifiable {
     case off = 0
     case fiveMinutes = 300
@@ -360,11 +390,13 @@ extension String {
 // MARK: - Theme
 
 struct Theme {
+    static let brandAccent = Color(lightHex: "168F83", darkHex: "5AD5C7")
     static let healthyAccent = Color(hex: "30D158")
     static let warningAccent = Color(hex: "FF9F0A")
     static let dangerAccent = Color(hex: "FF453A")
 
     static let panelCornerRadius: CGFloat = 10
+    static let settingsCardCornerRadius: CGFloat = 12
     static let rowCornerRadius: CGFloat = 8
     static let controlCornerRadius: CGFloat = 7
 
@@ -374,16 +406,19 @@ struct Theme {
     static let accountEmailFont = Font.system(size: 10.5, weight: .regular)
     static let metadataFont = Font.system(size: 10, weight: .medium)
     static let metricFont = Font.system(size: 10.5, weight: .semibold)
-    static let settingsLabelFont = Font.system(size: 12, weight: .medium)
+    static let settingsLabelFont = Font.system(size: 13, weight: .medium)
 
     static let healthyText = Color(lightHex: "157D40", darkHex: "30D158")
     static let warningText = Color(lightHex: "A25800", darkHex: "FF9F0A")
     static let dangerText = Color(lightHex: "B92F27", darkHex: "FF453A")
 
-    static let toolbarSurface = Color(lightHex: "20FFFFFF", darkHex: "10FFFFFF")
-    static let toolbarBorder = Color(lightHex: "19000000", darkHex: "24FFFFFF")
+    static let appBackground = Color(lightHex: "F7F8FA", darkHex: "17181C")
+    static let headerSurface = Color(lightHex: "FCFCFD", darkHex: "202126")
+    static let toolbarSurface = Color(lightHex: "B8FFFFFF", darkHex: "B026272D")
+    static let toolbarBorder = Color(lightHex: "22000000", darkHex: "32FFFFFF")
     static let controlHoverSurface = Color(lightHex: "12000000", darkHex: "18FFFFFF")
-    static let controlSelectedSurface = Color(lightHex: "1A000000", darkHex: "24FFFFFF")
+    static let controlSelectedSurface = Color(lightHex: "1F168F83", darkHex: "2A5AD5C7")
+    static let controlSelectedBorder = Color(lightHex: "35168F83", darkHex: "485AD5C7")
     static let controlBorder = Color(lightHex: "12000000", darkHex: "20FFFFFF")
     static let listSurfaceTint = Color(lightHex: "16FFFFFF", darkHex: "09FFFFFF")
     static let listBorder = Color(lightHex: "18000000", darkHex: "26FFFFFF")
@@ -399,8 +434,8 @@ struct Theme {
     static let warningBorder = Color(lightHex: "33914C00", darkHex: "38FF9F0A")
     static let dangerSurface = Color(lightHex: "12FF453A", darkHex: "1FFF453A")
     static let dangerBorder = Color(lightHex: "32B92F27", darkHex: "38FF453A")
-    static let settingsGroupSurface = Color(lightHex: "0A000000", darkHex: "0FFFFFFF")
-    static let settingsGroupBorder = Color(lightHex: "12000000", darkHex: "1EFFFFFF")
+    static let settingsGroupSurface = Color(lightHex: "EEF0F4", darkHex: "26272D")
+    static let settingsGroupBorder = Color(lightHex: "12000000", darkHex: "22FFFFFF")
 
     static func providerSectionSurface(for provider: AccountProvider) -> Color {
         .clear

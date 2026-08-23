@@ -11,6 +11,8 @@ struct SettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
+                appIdentity
+
                 settingsSection("General") {
                     generalSettings
                 }
@@ -21,9 +23,11 @@ struct SettingsView: View {
                     updateSettings
                 }
 
-                settingsSection("About") {
+                settingsSection("Support") {
                     aboutSettings
                 }
+
+                quitCard
             }
             .frame(width: contentWidth)
             .padding(.vertical, 14)
@@ -34,6 +38,29 @@ struct SettingsView: View {
             viewModel.refreshResetNotificationAuthorization()
             appUpdater.refreshSettings()
         }
+    }
+
+    private var appIdentity: some View {
+        HStack(spacing: 12) {
+            Image(nsImage: NSApplication.shared.applicationIconImage)
+                .resizable()
+                .interpolation(.high)
+                .scaledToFit()
+                .frame(width: 44, height: 44)
+                .accessibilityLabel("Codex Vitals app icon")
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(AppInfo.name)
+                    .font(.system(size: 17, weight: .semibold))
+                Text(AppInfo.versionText)
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var generalSettings: some View {
@@ -47,6 +74,39 @@ struct SettingsView: View {
                 }
                 .toggleStyle(.switch)
                 .controlSize(.mini)
+                .tint(Theme.brandAccent)
+            }
+
+            settingsDivider
+
+            settingsRow {
+                Toggle(isOn: $viewModel.groupByWorkspace) {
+                    settingsLabel("Group by Workspace", systemImage: "rectangle.3.group")
+                }
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                .tint(Theme.brandAccent)
+            }
+
+            settingsDivider
+
+            settingsRow {
+                HStack(spacing: 10) {
+                    settingsLabel("Account Order", systemImage: "arrow.up.arrow.down")
+                    Spacer(minLength: 8)
+                    Picker("", selection: Binding(
+                        get: { viewModel.accountSortMode },
+                        set: { viewModel.setAccountSortMode($0) }
+                    )) {
+                        ForEach(AccountSortMode.allCases) { mode in
+                            Text(mode.displayName).tag(mode)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .controlSize(.small)
+                    .frame(width: 96)
+                }
             }
 
             settingsDivider
@@ -78,6 +138,7 @@ struct SettingsView: View {
                 }
                 .toggleStyle(.switch)
                 .controlSize(.mini)
+                .tint(Theme.brandAccent)
                 .disabled(viewModel.isRequestingResetNotificationPermission)
                 .help("Notify after an automatic refresh confirms that usage has reset")
             }
@@ -113,6 +174,7 @@ struct SettingsView: View {
                 }
                 .toggleStyle(.switch)
                 .controlSize(.mini)
+                .tint(Theme.brandAccent)
             }
 
             settingsDivider
@@ -126,6 +188,7 @@ struct SettingsView: View {
                 }
                 .toggleStyle(.switch)
                 .controlSize(.mini)
+                .tint(Theme.brandAccent)
                 .disabled(!appUpdater.automaticallyChecksForUpdates)
             }
 
@@ -159,13 +222,13 @@ struct SettingsView: View {
                         .frame(width: 52, alignment: .leading)
 
                     RamterStudioLogoView()
-                        .frame(width: 136, height: 20, alignment: .leading)
+                        .frame(width: 150, height: 24, alignment: .leading)
 
                     Spacer(minLength: 8)
                     externalArrow
                 }
                 .padding(.horizontal, 14)
-                .frame(height: 42)
+                .frame(height: 56)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -203,6 +266,32 @@ struct SettingsView: View {
         }
     }
 
+    private var quitCard: some View {
+        VStack(spacing: 0) {
+            Button {
+                NSApp.terminate(nil)
+            } label: {
+                HStack(spacing: 10) {
+                    Label("Quit Codex Vitals", systemImage: "power")
+                        .font(Theme.settingsLabelFont)
+                        .foregroundStyle(Theme.dangerText)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 14)
+                .frame(height: 42)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Quit Codex Vitals")
+        }
+        .background(Theme.settingsGroupSurface)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.settingsCardCornerRadius, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: Theme.settingsCardCornerRadius, style: .continuous)
+                .stroke(Theme.settingsGroupBorder, lineWidth: 1)
+        }
+    }
+
     private var launchStatusMessage: String? {
         if let errorMessage = launchAtLogin.errorMessage {
             return errorMessage
@@ -228,10 +317,10 @@ struct SettingsView: View {
                 content()
             }
             .background(Theme.settingsGroupSurface)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.panelCornerRadius, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.settingsCardCornerRadius, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: Theme.panelCornerRadius, style: .continuous)
-                    .stroke(Theme.settingsGroupBorder, lineWidth: 0.6)
+                RoundedRectangle(cornerRadius: Theme.settingsCardCornerRadius, style: .continuous)
+                    .stroke(Theme.settingsGroupBorder, lineWidth: 1)
             }
         }
     }
@@ -243,7 +332,7 @@ struct SettingsView: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 14)
-        .frame(height: 40)
+        .frame(height: 42)
         .contentShape(Rectangle())
     }
 
@@ -277,7 +366,7 @@ struct SettingsView: View {
             trailing()
         }
         .padding(.horizontal, 14)
-        .frame(height: 40)
+        .frame(height: 42)
         .contentShape(Rectangle())
     }
 
