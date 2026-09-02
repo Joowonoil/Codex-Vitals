@@ -345,6 +345,16 @@ final class AccountListVisibilityTests: XCTestCase {
         XCTAssertTrue(text.contains(" "))
     }
 
+    func testCompactResetDateUsesUnambiguousMonthName() throws {
+        let calendar = Calendar.current
+        let now = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 9, day: 2)))
+        let sameYear = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 9, day: 7)))
+        let nextYear = try XCTUnwrap(calendar.date(from: DateComponents(year: 2027, month: 9, day: 7)))
+
+        XCTAssertEqual(ResetFormatter.dateString(target: sameYear, now: now), "Sep 7")
+        XCTAssertEqual(ResetFormatter.dateString(target: nextYear, now: now), "Sep 7, 2027")
+    }
+
     @MainActor
     func testAccountDisplayAliasIsPresentationOnly() {
         var account = makeAccount(id: "person@example.com|acc", email: "person@example.com", hasError: false)

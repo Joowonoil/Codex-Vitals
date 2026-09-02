@@ -623,6 +623,10 @@ private extension NSColor {
 
 struct ResetFormatter {
     private static let weekdaysShort = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+    private static let monthsShort = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+    ]
 
     /// Weekly exhausted row: "resets Wed 18:19" because reset is the only actionable info.
     static func formatReset(seconds: Double) -> String {
@@ -696,16 +700,17 @@ struct ResetFormatter {
         "\(dateString(target: target, now: now)) \(time)"
     }
 
-    private static func dateString(target: Date, now: Date) -> String {
+    static func dateString(target: Date, now: Date) -> String {
         let cal = Calendar.current
         let d = cal.component(.day, from: target)
         let m = cal.component(.month, from: target)
         let y = cal.component(.year, from: target)
         let yNow = cal.component(.year, from: now)
+        let month = monthsShort[max(0, min(monthsShort.count - 1, m - 1))]
         if y == yNow {
-            return String(format: "%02d/%02d", d, m)
+            return "\(month) \(d)"
         }
-        return String(format: "%02d/%02d/%d", d, m, y)
+        return "\(month) \(d), \(y)"
     }
 
     /// Full tooltip string.

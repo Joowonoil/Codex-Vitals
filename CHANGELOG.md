@@ -2,6 +2,11 @@
 
 All notable changes to Codex Vitals will be documented here.
 
+## 1.6.1 - 2026-09-02
+
+- Replaced ambiguous numeric reset dates such as `07/09` with clear month-name dates such as `Sep 7`.
+- Added the year only when the reset falls outside the current year, for example `Sep 7, 2027`.
+
 ## 1.6.0 - 2026-08-24
 
 - Refined the header and Settings with the quieter RamterStudio family design, a reduced semi-glass toolbar, clearer card hierarchy, and `by RamterStudio` branding.
