@@ -2,6 +2,10 @@
 
 All notable changes to Codex Vitals will be documented here.
 
+## 1.6.2 - 2026-09-02
+
+- Suppressed stale Claude credential errors when no Claude accounts are configured, while preserving authentication errors for registered Claude accounts.
+
 ## 1.6.1 - 2026-09-02
 
 - Replaced ambiguous numeric reset dates such as `07/09` with clear month-name dates such as `Sep 7`.

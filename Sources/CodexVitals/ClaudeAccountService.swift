@@ -62,7 +62,10 @@ actor ClaudeAccountService {
             }
         }
         let accounts = indexedAccounts.sorted { $0.0 < $1.0 }.map(\.1)
-        return ClaudeNativeLoadResult(accounts: accounts, errorMessage: integrationError)
+        return ClaudeNativeLoadResult(
+            accounts: accounts,
+            errorMessage: profiles.isEmpty ? nil : integrationError
+        )
     }
 
     @discardableResult

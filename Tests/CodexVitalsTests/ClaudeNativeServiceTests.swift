@@ -179,6 +179,58 @@ final class ClaudeNativeServiceTests: XCTestCase {
         XCTAssertEqual(permissions?.intValue, 0o755)
     }
 
+    func testLoadSuppressesInvalidCredentialsWhenNoClaudeProfilesAreConfigured() async throws {
+        let root = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let keychain = FakeClaudeKeychain()
+        try keychain.write(
+            service: ClaudeKeychainStore.activeService,
+            account: keychain.activeAccountName,
+            value: "{}"
+        )
+        let service = ClaudeAccountService(
+            keychain: keychain,
+            accountStore: ClaudeAccountStore(storeURL: root.appendingPathComponent("accounts.json")),
+            configStore: FakeClaudeConfig(object: [
+                "oauthAccount": oauthAccount(email: "unused@example.com", uuid: "unused-account"),
+            ]),
+            usageClient: UnusedClaudeUsageProvider()
+        )
+
+        let result = await service.loadAccounts()
+
+        XCTAssertTrue(result.accounts.isEmpty)
+        XCTAssertNil(result.errorMessage)
+    }
+
+    func testLoadReportsInvalidCredentialsWhenClaudeProfileExists() async throws {
+        let root = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let oauth = oauthAccount(email: "configured@example.com", uuid: "configured-account")
+        let accountStore = ClaudeAccountStore(storeURL: root.appendingPathComponent("accounts.json"))
+        _ = try accountStore.upsert(
+            identity: ClaudeIdentity(oauthAccount: oauth),
+            oauthAccount: oauth
+        )
+        let keychain = FakeClaudeKeychain()
+        try keychain.write(
+            service: ClaudeKeychainStore.activeService,
+            account: keychain.activeAccountName,
+            value: "{}"
+        )
+        let service = ClaudeAccountService(
+            keychain: keychain,
+            accountStore: accountStore,
+            configStore: FakeClaudeConfig(object: ["oauthAccount": oauth]),
+            usageClient: UnusedClaudeUsageProvider()
+        )
+
+        let result = await service.loadAccounts()
+
+        XCTAssertEqual(result.accounts.count, 1)
+        XCTAssertEqual(result.errorMessage, "Claude credentials are invalid.")
+    }
+
     func testNativeSwitchPreservesLiveSharedFieldsAndOnlyReplacesOAuthAccount() async throws {
         let fixture = try makeSwitchFixture()
         defer { try? FileManager.default.removeItem(at: fixture.root) }
