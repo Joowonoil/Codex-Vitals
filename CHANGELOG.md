@@ -2,6 +2,11 @@
 
 All notable changes to Codex Vitals will be documented here.
 
+## Unreleased
+
+- Allowed authenticated Codex and Claude accounts to be selected manually even when their current quota is at zero.
+- Added a separate read-only column on the far right for banked Codex usage resets, including the available count and each reset's local expiration date, time, and time zone. It contains no redemption control and never uses a reset.
+
 ## 1.6.2 - 2026-09-02
 
 - Suppressed stale Claude credential errors when no Claude accounts are configured, while preserving authentication errors for registered Claude accounts.

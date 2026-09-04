@@ -91,6 +91,12 @@ struct Account: Identifiable, Equatable, Codable, Sendable {
     let sessionResetSeconds: Double
     let weeklyResetSeconds: Double
     var quotaWindows: [QuotaWindow]? = nil
+    /// Banked usage-limit resets currently available for this Codex account.
+    /// `nil` means the best-effort reset-credit lookup was unavailable.
+    var availableResetCount: Int? = nil
+    /// Expiration instants for the available banked resets, ordered soonest first.
+    /// `nil` means the count is known but the detailed read-only lookup was unavailable.
+    var bankedResetExpirations: [Date]? = nil
     var fableQuotaWindow: QuotaWindow? = nil
     var planRenewalDate: Date?
     let hasError: Bool
@@ -242,10 +248,12 @@ struct Account: Identifiable, Equatable, Codable, Sendable {
     }
 
     var canSwitchProviderAccount: Bool {
-        guard isClaudeAccount else { return isUsableForCodex }
+        guard isClaudeAccount else {
+            return !hasError && !usageWindows.isEmpty
+        }
         switch providerStatus {
         case "ok":
-            return isUsableForCodex
+            return !hasError && !usageWindows.isEmpty
         case "unavailable":
             return true
         default:
@@ -744,6 +752,24 @@ struct PlanCycleFormatter {
 
     static func tooltip(for date: Date) -> String {
         "Plan renews \(ResetFormatter.fullTooltip(date: date))"
+    }
+}
+
+struct BankedResetFormatter {
+    static func countLabel(_ count: Int?) -> String {
+        guard let count else { return "BANKED RESETS UNAVAILABLE" }
+        return "\(count) BANKED RESET\(count == 1 ? "" : "S")"
+    }
+
+    static func expiration(
+        _ date: Date,
+        timeZone: TimeZone = .current
+    ) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = timeZone
+        formatter.dateFormat = "MMM d, yyyy 'at' h:mm a z"
+        return formatter.string(from: date)
     }
 }
 

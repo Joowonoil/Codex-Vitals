@@ -93,6 +93,7 @@ final class AccountListVisibilityTests: XCTestCase {
 
         XCTAssertTrue(account.isFreeWaitingForReset)
         XCTAssertFalse(account.isUsableForCodex)
+        XCTAssertTrue(account.canSwitchProviderAccount)
         XCTAssertEqual(account.freePlanResetSeconds, 86_400)
     }
 
@@ -158,7 +159,188 @@ final class AccountListVisibilityTests: XCTestCase {
 
         XCTAssertTrue(account.isWeeklyExhausted)
         XCTAssertFalse(account.isUsableForCodex)
+        XCTAssertTrue(account.canSwitchProviderAccount)
         XCTAssertEqual(account.nextWaitingResetSeconds, 345_600)
+    }
+
+    func testErroredCodexAccountStillRequiresReconnectBeforeSwitching() {
+        let account = makeAccount(
+            id: "error@example.com|acc",
+            email: "error@example.com",
+            hasError: true
+        )
+
+        XCTAssertFalse(account.canSwitchProviderAccount)
+    }
+
+    func testExhaustedClaudeAccountCanStillBeSwitchedWhenAuthenticated() {
+        var account = makeAccount(
+            id: "claude-native:exhausted",
+            email: "claude@example.com",
+            plan: "max",
+            sessionFree: 0,
+            weeklyFree: 100,
+            sessionResetSeconds: 3_600
+        )
+        account.provider = .claude
+        account.providerStatus = "ok"
+
+        XCTAssertFalse(account.isUsableForCodex)
+        XCTAssertTrue(account.canSwitchProviderAccount)
+    }
+
+    func testResetCreditCountParsesAvailableAndZeroValues() {
+        XCTAssertEqual(
+            UsageService.availableResetCount(from: [
+                "rate_limit_reset_credits": ["available_count": 2]
+            ]),
+            2
+        )
+        XCTAssertEqual(
+            UsageService.availableResetCount(from: ["available_count": 3]),
+            3
+        )
+        XCTAssertEqual(
+            UsageService.availableResetCount(from: ["available_count": NSNumber(value: 0)]),
+            0
+        )
+        XCTAssertNil(UsageService.availableResetCount(from: ["available_count": -1]))
+        XCTAssertNil(UsageService.availableResetCount(from: ["error": "HTTP 401"]))
+        XCTAssertNil(UsageService.availableResetCount(from: [:]))
+    }
+
+    func testBankedResetAvailabilityParsesAndSortsAvailableExpirationDates() throws {
+        let availability = try XCTUnwrap(UsageService.bankedResetAvailability(from: [
+            "available_count": 2,
+            "credits": [
+                [
+                    "status": "available",
+                    "expires_at": "2027-03-21T18:45:00Z",
+                ],
+                [
+                    "status": "redeemed",
+                    "expires_at": "2026-09-01T00:00:00Z",
+                ],
+                [
+                    "status": "AVAILABLE",
+                    "expires_at": "2026-09-21T23:09:00.000Z",
+                ],
+            ],
+        ]))
+
+        XCTAssertEqual(availability.count, 2)
+        XCTAssertEqual(
+            availability.expirations,
+            [
+                ISO8601DateFormatter().date(from: "2026-09-21T23:09:00Z")!,
+                ISO8601DateFormatter().date(from: "2027-03-21T18:45:00Z")!,
+            ]
+        )
+    }
+
+    func testNestedUsageCountMarksExpirationDetailsUnavailable() throws {
+        let availability = try XCTUnwrap(UsageService.bankedResetAvailability(from: [
+            "rate_limit_reset_credits": ["available_count": 1]
+        ]))
+
+        XCTAssertEqual(availability.count, 1)
+        XCTAssertNil(availability.expirations)
+    }
+
+    func testZeroBankedResetsHasAnEmptyExpirationList() throws {
+        let availability = try XCTUnwrap(UsageService.bankedResetAvailability(from: [
+            "available_count": 0
+        ]))
+
+        XCTAssertEqual(availability.count, 0)
+        XCTAssertEqual(availability.expirations, [])
+    }
+
+    func testBankedResetCountSurvivesSnapshotRoundTrip() throws {
+        var account = makeAccount(
+            id: "resets@example.com|acc",
+            email: "resets@example.com",
+            hasError: false
+        )
+        account.availableResetCount = 2
+        account.bankedResetExpirations = [
+            Date(timeIntervalSince1970: 1_800_000_000),
+            Date(timeIntervalSince1970: 1_900_000_000),
+        ]
+
+        let data = try JSONEncoder().encode(account)
+        let decoded = try JSONDecoder().decode(Account.self, from: data)
+
+        XCTAssertEqual(decoded.availableResetCount, 2)
+        XCTAssertEqual(decoded.bankedResetExpirations, account.bankedResetExpirations)
+    }
+
+    func testBankedResetFormatterIncludesExactLocalTimeAndZone() {
+        let date = ISO8601DateFormatter().date(from: "2027-03-21T18:45:00Z")!
+        let denver = TimeZone(identifier: "America/Denver")!
+
+        XCTAssertEqual(
+            BankedResetFormatter.expiration(date, timeZone: denver),
+            "Mar 21, 2027 at 12:45 PM MDT"
+        )
+        XCTAssertEqual(BankedResetFormatter.countLabel(0), "0 BANKED RESETS")
+        XCTAssertEqual(BankedResetFormatter.countLabel(1), "1 BANKED RESET")
+        XCTAssertEqual(BankedResetFormatter.countLabel(2), "2 BANKED RESETS")
+    }
+
+    @MainActor
+    func testRefreshPreservesMatchingRecentBankedResetDetails() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        var previous = makeAccount(
+            id: "resets@example.com|acc",
+            email: "resets@example.com",
+            hasError: false
+        )
+        previous.availableResetCount = 2
+        previous.bankedResetExpirations = [
+            now.addingTimeInterval(-60),
+            now.addingTimeInterval(3_600),
+        ]
+        var current = previous
+        current.bankedResetExpirations = nil
+
+        let merged = UsageViewModel.preservingBankedResetDetails(
+            in: [current],
+            from: [previous],
+            previousFetchedAt: now.addingTimeInterval(-300),
+            now: now
+        )
+
+        XCTAssertEqual(merged.first?.availableResetCount, 2)
+        XCTAssertEqual(merged.first?.bankedResetExpirations, [now.addingTimeInterval(3_600)])
+    }
+
+    @MainActor
+    func testRefreshUsesRecentCachedCountWhenLookupTemporarilyFails() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        var previous = makeAccount(
+            id: "resets@example.com|acc",
+            email: "resets@example.com",
+            hasError: false
+        )
+        previous.availableResetCount = 2
+        previous.bankedResetExpirations = [
+            now.addingTimeInterval(-60),
+            now.addingTimeInterval(3_600),
+        ]
+        var current = previous
+        current.availableResetCount = nil
+        current.bankedResetExpirations = nil
+
+        let merged = UsageViewModel.preservingBankedResetDetails(
+            in: [current],
+            from: [previous],
+            previousFetchedAt: now.addingTimeInterval(-300),
+            now: now
+        )
+
+        XCTAssertEqual(merged.first?.availableResetCount, 1)
+        XCTAssertEqual(merged.first?.bankedResetExpirations, [now.addingTimeInterval(3_600)])
     }
 
     func testQuotaWindowsUseDurationInsteadOfPrimarySecondaryPosition() {
