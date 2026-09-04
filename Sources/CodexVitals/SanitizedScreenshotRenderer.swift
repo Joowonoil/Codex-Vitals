@@ -18,7 +18,7 @@ enum SanitizedScreenshotRenderer {
         configure(viewModel)
         let rootView = SanitizedProductScreenshot(viewModel: viewModel, icon: icon)
             .environment(\.colorScheme, .light)
-        let size = NSSize(width: 652, height: 360)
+        let size = NSSize(width: ContentView.preferredWidth, height: 390)
         let hostingView = NSHostingView(rootView: rootView)
         hostingView.frame = NSRect(origin: .zero, size: size)
 
@@ -76,6 +76,10 @@ enum SanitizedScreenshotRenderer {
                 weeklyReset: 345_600,
                 provider: .codex,
                 availableResets: 2,
+                resetExpirations: [
+                    sampleDate("2026-09-21T23:09:00Z"),
+                    sampleDate("2026-10-18T16:30:00Z"),
+                ],
                 planDaysRemaining: 5
             ),
             account(
@@ -91,6 +95,7 @@ enum SanitizedScreenshotRenderer {
                 weeklyReset: 432_000,
                 provider: .codex,
                 availableResets: 0,
+                resetExpirations: [],
                 planDaysRemaining: 23,
                 singleWindowSeconds: 30 * 24 * 60 * 60
             ),
@@ -101,12 +106,13 @@ enum SanitizedScreenshotRenderer {
                 alias: "Shared Workspace",
                 workspace: "Business",
                 plan: "team",
-                fiveHour: 48,
-                weekly: 86,
+                fiveHour: 0,
+                weekly: 0,
                 fiveHourReset: 7_200,
                 weeklyReset: 518_400,
                 provider: .codex,
                 availableResets: 1,
+                resetExpirations: [sampleDate("2027-03-21T18:45:00Z")],
                 planDaysRemaining: 1
             ),
             account(
@@ -151,6 +157,10 @@ enum SanitizedScreenshotRenderer {
         viewModel.groupByWorkspace = false
     }
 
+    private static func sampleDate(_ raw: String) -> Date {
+        ISO8601DateFormatter().date(from: raw) ?? Date(timeIntervalSince1970: 0)
+    }
+
     private static func account(
         id: String,
         profileKey: String?,
@@ -164,6 +174,7 @@ enum SanitizedScreenshotRenderer {
         weeklyReset: TimeInterval,
         provider: AccountProvider,
         availableResets: Int? = nil,
+        resetExpirations: [Date]? = nil,
         providerProfileID: String? = nil,
         providerIsActive: Bool = false,
         fable: Double? = nil,
@@ -207,6 +218,7 @@ enum SanitizedScreenshotRenderer {
             weeklyResetSeconds: weeklyReset,
             quotaWindows: windows,
             availableResetCount: availableResets,
+            bankedResetExpirations: resetExpirations,
             fableQuotaWindow: fable.map {
                 QuotaWindow(
                     limitSeconds: QuotaWindow.weeklySeconds,
@@ -254,7 +266,7 @@ private struct SanitizedProductScreenshot: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 7)
         }
-        .frame(width: 652, height: 360)
+        .frame(width: ContentView.preferredWidth, height: 390)
         .background(Theme.appBackground)
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay {

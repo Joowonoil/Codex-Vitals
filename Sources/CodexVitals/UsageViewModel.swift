@@ -66,6 +66,7 @@ final class UsageViewModel: ObservableObject {
     private var pendingForceMetadataRefreshAfterCurrent = false
     private var pendingResetNotificationCheck = false
     private let resetNotificationsEnabledKey = "usageResetNotificationsEnabled"
+    private static let bankedResetCacheTTL: TimeInterval = 6 * 60 * 60
 
     // MARK: - Init
 
@@ -300,11 +301,17 @@ final class UsageViewModel: ObservableObject {
             async let codexAccounts = service.loadAll(forceMetadataRefresh: forceMetadataRefresh)
             async let claudeResult = claudeService.loadAccounts()
             let (loadedCodexAccounts, loadedClaudeResult) = await (codexAccounts, claudeResult)
-            let loadedAccounts = loadedCodexAccounts + loadedClaudeResult.accounts
+            let freshlyLoadedAccounts = loadedCodexAccounts + loadedClaudeResult.accounts
             if let claudeError = loadedClaudeResult.errorMessage {
                 accountActionError = claudeError
             }
             let now = Date()
+            let loadedAccounts = Self.preservingBankedResetDetails(
+                in: freshlyLoadedAccounts,
+                from: previousAccounts,
+                previousFetchedAt: previousRefresh,
+                now: now
+            )
             let resetEvents = notifyOnReset && resetNotificationsEnabled
                 ? UsageResetDetector.detect(
                     previousAccounts: previousAccounts,
@@ -334,6 +341,47 @@ final class UsageViewModel: ObservableObject {
                     notifyOnReset: shouldNotifyOnReset
                 )
             }
+        }
+    }
+
+    /// Keeps a recent successful read-only reset-credit result when the detail endpoint is
+    /// temporarily rate limited. Fresh counts always win, and known expired credits are pruned.
+    static func preservingBankedResetDetails(
+        in currentAccounts: [Account],
+        from previousAccounts: [Account],
+        previousFetchedAt: Date?,
+        now: Date
+    ) -> [Account] {
+        let previousByID = Dictionary(uniqueKeysWithValues: previousAccounts.map { ($0.id, $0) })
+        let cacheIsFresh = previousFetchedAt.map {
+            let age = now.timeIntervalSince($0)
+            return age >= 0 && age <= bankedResetCacheTTL
+        } ?? false
+
+        return currentAccounts.map { currentValue in
+            guard !currentValue.isClaudeAccount,
+                  let previous = previousByID[currentValue.id] else {
+                return currentValue
+            }
+
+            var current = currentValue
+            if current.availableResetCount == nil, cacheIsFresh,
+               let previousCount = previous.availableResetCount {
+                let previousDates = previous.bankedResetExpirations
+                let expiredKnownCount = previousDates?.filter { $0 <= now }.count ?? 0
+                current.availableResetCount = max(0, previousCount - expiredKnownCount)
+                current.bankedResetExpirations = previousDates?.filter { $0 > now }
+                if current.availableResetCount == 0 {
+                    current.bankedResetExpirations = []
+                }
+                return current
+            }
+
+            if current.bankedResetExpirations == nil,
+               current.availableResetCount == previous.availableResetCount {
+                current.bankedResetExpirations = previous.bankedResetExpirations?.filter { $0 > now }
+            }
+            return current
         }
     }
 

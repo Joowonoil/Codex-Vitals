@@ -29,7 +29,7 @@
 **Codex Vitals** helps you monitor OpenAI Codex usage, reset windows, account state, and workspaces from the macOS menu bar or Windows system tray. On macOS it also manages Claude Code accounts natively. Codex and Claude remain independently signed in and switch independently.
 
 - View best-effort Codex quota and usage across all your accounts
-- On macOS, see each Codex account's available banked usage-reset count without redeeming a reset
+- On macOS, see each Codex account's banked reset count and every known expiration date and time in a separate read-only column on the far right
 - Group accounts by workspace/team
 - Add local display aliases so personal accounts are easy to identify
 - Choose Usage or Manual account order and drag rows into place; the first successful drop automatically enables Manual order
@@ -48,7 +48,7 @@
 ## Features
 
 - **Codex Quota Dashboard** — Best-effort usage tracking across all linked accounts
-- **Banked Reset Visibility on macOS** — Show each Codex account's available reset count without redeeming it
+- **Banked Reset Visibility on macOS** — Show each Codex account's available count and individual expiration times in a clearly labeled, non-clickable read-only column; the app has no control that redeems a reset
 - **Workspace Grouping** — Accounts organized by team/workspace
 - **Display Aliases** — Local-only account labels for easier scanning while preserving the real email for auth and copy actions
 - **Account Health** — Visual indicators for invalid or deactivated accounts
@@ -173,6 +173,8 @@ For Claude support on macOS, the app uses the official Claude Code CLI for inter
 - `https://platform.claude.com/v1/oauth/token`
 
 These are not official public APIs and may change without notice.
+
+The banked-reset endpoint is queried with `GET` only. Codex Vitals displays the returned count and expiration metadata but provides no reset-redemption action.
 
 Automatic usage refresh defaults to 10 minutes. Account metadata is cached for 6 hours during automatic refreshes, while manual refresh always requests fresh usage and metadata.
 

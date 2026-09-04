@@ -1,5 +1,11 @@
 import Foundation
 
+struct BankedResetAvailability: Equatable, Sendable {
+    let count: Int
+    /// Known expiration instants for available credits. `nil` means only the count was returned.
+    let expirations: [Date]?
+}
+
 /// Fetches best-effort Codex usage data from chatgpt.com.
 final class UsageService: @unchecked Sendable {
 
@@ -11,6 +17,7 @@ final class UsageService: @unchecked Sendable {
     private static let maxConcurrentRequests = 4
     private static let metadataCacheTTL: TimeInterval = 6 * 60 * 60
     private static let refreshFailedError = CodexTokenRefreshService.reloginRequiredMessage
+    private static let resetCreditRetryDelays: [UInt64] = [750_000_000, 1_500_000_000]
 
     private struct AccountMetadata: Sendable {
         let workspaceName: String?
@@ -64,18 +71,16 @@ final class UsageService: @unchecked Sendable {
             profiles: profiles,
             usages: usages
         )
-        async let resetCreditCountsTask = fetchResetCreditCounts(
-            validKeys: validKeys,
-            profiles: profiles,
-            usages: usages
-        )
-        async let tokenAccountMetadataTask = fetchAccountMetadata(
+        let tokenAccountMetadata = await fetchAccountMetadata(
             for: metadataTokens,
             forceRefresh: forceMetadataRefresh
         )
-        let (resetCreditCounts, tokenAccountMetadata) = await (
-            resetCreditCountsTask,
-            tokenAccountMetadataTask
+        // The reset-credit endpoint applies a tighter burst limit than usage and metadata.
+        // Fetch these serially after metadata so every account has a fair chance to populate.
+        let resetCreditAvailability = await fetchResetCreditAvailability(
+            validKeys: validKeys,
+            profiles: profiles,
+            usages: usages
         )
         let accountMetadataByID = mergedAccountMetadata(from: tokenAccountMetadata)
 
@@ -170,7 +175,8 @@ final class UsageService: @unchecked Sendable {
                 sessionResetSeconds: fiveHourWindow?.resetAfterSeconds ?? 0,
                 weeklyResetSeconds: weeklyWindow?.resetAfterSeconds ?? 0,
                 quotaWindows: hasUsage ? quotaWindows : [],
-                availableResetCount: resetCreditCounts[key],
+                availableResetCount: resetCreditAvailability[key]?.count,
+                bankedResetExpirations: resetCreditAvailability[key]?.expirations,
                 planRenewalDate: planRenewalDate,
                 hasError: !hasUsage,
                 errorMessage: usageError ?? (!hasUsage ? "Codex usage unavailable" : nil)
@@ -220,12 +226,38 @@ final class UsageService: @unchecked Sendable {
     }
 
     static func availableResetCount(from response: [String: Any]) -> Int? {
-        guard response["error"] == nil,
-              let value = numericValue(response["available_count"]),
+        bankedResetAvailability(from: response)?.count
+    }
+
+    static func bankedResetAvailability(from response: [String: Any]) -> BankedResetAvailability? {
+        guard response["error"] == nil else { return nil }
+        let resetCredits = (response["rate_limit_reset_credits"] as? [String: Any]) ?? response
+        guard let value = numericValue(
+            resetCredits["available_count"]
+        ),
               value >= 0 else {
             return nil
         }
-        return Int(value)
+        let count = Int(value)
+        guard count > 0 else {
+            return BankedResetAvailability(count: 0, expirations: [])
+        }
+
+        // The regular usage response includes only the count. The dedicated read-only
+        // endpoint additionally includes one entry per credit and its expiration.
+        guard let credits = resetCredits["credits"] as? [[String: Any]] else {
+            return BankedResetAvailability(count: count, expirations: nil)
+        }
+
+        let expirations = credits
+            .filter { credit in
+                guard let status = credit["status"] as? String else { return false }
+                return status.caseInsensitiveCompare("available") == .orderedSame
+            }
+            .compactMap { apiDateValue($0["expires_at"]) }
+            .sorted()
+
+        return BankedResetAvailability(count: count, expirations: expirations)
     }
 
     private static func numericValue(_ value: Any?) -> Double? {
@@ -313,59 +345,82 @@ final class UsageService: @unchecked Sendable {
         }
     }
 
-    private func fetchResetCreditCounts(
+    private func fetchResetCreditAvailability(
         validKeys: [String],
         profiles: [String: [String: Any]],
         usages: [String: [String: Any]]
-    ) async -> [String: Int] {
-        let jobs: [(profileKey: String, token: String, accountID: String)] = validKeys.compactMap { key in
+    ) async -> [String: BankedResetAvailability] {
+        var result: [String: BankedResetAvailability] = [:]
+        var jobs: [(profileKey: String, token: String, accountID: String)] = []
+
+        for key in validKeys {
+            if let availability = Self.bankedResetAvailability(from: usages[key] ?? [:]) {
+                result[key] = availability
+                // Zero has no expiration details to retrieve. A positive count still
+                // needs the dedicated endpoint so the UI can list every expiration.
+                if availability.count == 0 {
+                    continue
+                }
+            }
             guard let profile = profiles[key],
                   let token = accessToken(for: key, profile: profile, usages: usages),
                   !token.isEmpty else {
-                return nil
+                continue
             }
             let accountID = Self.resolvedAccountID(
                 usage: usages[key] ?? [:],
                 profile: profile
             )
-            guard !accountID.isEmpty else { return nil }
-            return (key, token, accountID)
+            guard !accountID.isEmpty else { continue }
+            jobs.append((key, token, accountID))
         }
 
-        guard !jobs.isEmpty else { return [:] }
+        guard !jobs.isEmpty else { return result }
 
-        return await withTaskGroup(of: (String, Int?).self) { group in
-            var iterator = jobs.makeIterator()
-            var activeCount = 0
-            var result: [String: Int] = [:]
+        for job in jobs {
+            guard !Task.isCancelled else { break }
+            if let availability = await fetchResetCreditAvailability(
+                token: job.token,
+                accountID: job.accountID
+            ) {
+                result[job.profileKey] = availability
+            }
+        }
+        return result
+    }
 
-            func scheduleNext() {
-                guard let job = iterator.next() else { return }
-                activeCount += 1
-                group.addTask { [self] in
-                    let response = await apiGet(
-                        "/backend-api/wham/rate-limit-reset-credits",
-                        token: job.token,
-                        accountID: job.accountID
+    private func fetchResetCreditAvailability(
+        token: String,
+        accountID: String
+    ) async -> BankedResetAvailability? {
+        for attempt in 0...Self.resetCreditRetryDelays.count {
+            if attempt > 0 {
+                do {
+                    try await Task.sleep(
+                        nanoseconds: Self.resetCreditRetryDelays[attempt - 1]
                     )
-                    return (job.profileKey, Self.availableResetCount(from: response))
+                } catch {
+                    return nil
                 }
             }
 
-            for _ in 0..<min(Self.maxConcurrentRequests, jobs.count) {
-                scheduleNext()
+            let response = await apiGet(
+                "/backend-api/wham/rate-limit-reset-credits",
+                token: token,
+                accountID: accountID
+            )
+            if let availability = Self.bankedResetAvailability(from: response) {
+                return availability
             }
 
-            while activeCount > 0, let (key, count) = await group.next() {
-                activeCount -= 1
-                if let count {
-                    result[key] = count
-                }
-                scheduleNext()
-            }
-
-            return result
+            let statusCode = response["http_status"] as? Int
+            let isTransient = statusCode == nil
+                || statusCode == 408
+                || statusCode == 429
+                || (statusCode.map { 500...599 ~= $0 } ?? false)
+            guard isTransient else { return nil }
         }
+        return nil
     }
 
     private func fetchAccountMetadata(token: String) async -> [String: AccountMetadata] {
@@ -519,10 +574,13 @@ final class UsageService: @unchecked Sendable {
                 }
                 return obj
             }
+            return [
+                "error": statusCode == 0 ? "parse error" : "HTTP \(statusCode)",
+                "http_status": statusCode,
+            ]
         } catch {
             return ["error": error.localizedDescription]
         }
-        return ["error": "parse error"]
     }
 
     private func usage(_ usage: [String: Any], accessToken: String) -> [String: Any] {
@@ -730,6 +788,10 @@ final class UsageService: @unchecked Sendable {
     }
 
     private func dateValue(_ value: Any?) -> Date? {
+        Self.apiDateValue(value)
+    }
+
+    private static func apiDateValue(_ value: Any?) -> Date? {
         if let string = value as? String {
             let fractionalFormatter = ISO8601DateFormatter()
             fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]

@@ -301,9 +301,7 @@ private struct ReorderableAccountRow<Content: View>: View {
     }
 
     private var rowHeight: CGFloat {
-        let baseHeight: CGFloat = account.hasDisplayAlias ? 40 : 34
-        let fableHeight: CGFloat = account.isClaudeAccount && account.fableQuotaWindow != nil ? 22 : 0
-        return baseHeight + fableHeight
+        CompactRowLayout.rowHeight(for: account)
     }
 
     private var dragPreview: some View {
@@ -338,6 +336,14 @@ struct ProviderSectionHeader: View {
                 .font(Theme.sectionTitleFont)
                 .foregroundColor(Theme.providerText(for: provider))
             Spacer()
+            if provider == .codex {
+                Text("BANKED RESETS · READ ONLY")
+                    .font(.system(size: 9, weight: .semibold))
+                    .tracking(0.35)
+                    .foregroundStyle(Theme.providerText(for: provider).opacity(0.72))
+                    .frame(width: CompactRowLayout.bankedResetWidth, alignment: .leading)
+                    .accessibilityLabel("Banked resets, read only")
+            }
         }
         .padding(.horizontal, 12)
         .frame(height: 29)
@@ -560,8 +566,9 @@ struct AccountRow: View {
 private enum CompactRowLayout {
     static let horizontalPadding: CGFloat = 12
     static let emailMinWidth: CGFloat = 164
-    static let actionWidth: CGFloat = 24
+    static let actionWidth: CGFloat = 30
     static let leadingControlWidth: CGFloat = 19
+    static let bankedResetWidth: CGFloat = 218
 
     struct Metrics {
         let spacing: CGFloat
@@ -573,9 +580,10 @@ private enum CompactRowLayout {
         let quotaAreaWidth: CGFloat
         let planCycleWidth: CGFloat
         let actionWidth: CGFloat
+        let bankedResetWidth: CGFloat
     }
 
-    static func metrics(totalWidth: CGFloat) -> Metrics {
+    static func metrics(totalWidth: CGFloat, includesBankedResets: Bool) -> Metrics {
         let spacing: CGFloat = 3
         let contentWidth = max(0, totalWidth - horizontalPadding * 2)
         let workspaceWidth: CGFloat = 58
@@ -592,6 +600,7 @@ private enum CompactRowLayout {
             + actionWidth
             + quotaAreaWidth
             + planCycleWidth
+            + (includesBankedResets ? bankedResetWidth + spacing : 0)
             + spacing * 5
 
         return Metrics(
@@ -603,8 +612,26 @@ private enum CompactRowLayout {
             weeklyResetWidth: weeklyResetWidth,
             quotaAreaWidth: quotaAreaWidth,
             planCycleWidth: planCycleWidth,
-            actionWidth: actionWidth
+            actionWidth: actionWidth,
+            bankedResetWidth: bankedResetWidth
         )
+    }
+
+    static func rowHeight(for account: Account) -> CGFloat {
+        let baseHeight: CGFloat = account.hasDisplayAlias ? 40 : 34
+        if account.isClaudeAccount {
+            return baseHeight + (account.fableQuotaWindow != nil ? 22 : 0)
+        }
+
+        let detailLineCount: Int
+        if let count = account.availableResetCount, count > 0 {
+            let knownCount = min(count, account.bankedResetExpirations?.count ?? 0)
+            detailLineCount = max(1, knownCount + (knownCount < count ? 1 : 0))
+        } else {
+            detailLineCount = 1
+        }
+        let resetListHeight: CGFloat = 27 + CGFloat(detailLineCount) * 11
+        return max(baseHeight, resetListHeight)
     }
 }
 
@@ -633,12 +660,8 @@ struct AccountCompactRow: View {
     @State private var isShowingRemovalConfirmation = false
 
     private var exhausted: Bool { account.isWeeklyExhausted }
-    private var hasFableQuota: Bool {
-        account.isClaudeAccount && account.fableQuotaWindow != nil
-    }
     private var rowHeight: CGFloat {
-        let baseHeight: CGFloat = account.hasDisplayAlias ? 40 : 34
-        return baseHeight + (hasFableQuota ? 22 : 0)
+        CompactRowLayout.rowHeight(for: account)
     }
     private var canShowSwapControl: Bool {
         showsSwitchControls
@@ -664,7 +687,10 @@ struct AccountCompactRow: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let layout = CompactRowLayout.metrics(totalWidth: proxy.size.width)
+            let layout = CompactRowLayout.metrics(
+                totalWidth: proxy.size.width,
+                includesBankedResets: !account.isClaudeAccount
+            )
             let freeResetWidth = layout.quotaAreaWidth
                 + layout.planCycleWidth
                 + layout.spacing
@@ -687,6 +713,14 @@ struct AccountCompactRow: View {
                 } else {
                     accountActionControl(width: layout.actionWidth)
                     usageMetrics(layout: layout)
+                }
+
+                if !account.isClaudeAccount {
+                    BankedResetListView(
+                        count: account.availableResetCount,
+                        expirations: account.bankedResetExpirations,
+                        width: layout.bankedResetWidth
+                    )
                 }
             }
             .padding(.horizontal, CompactRowLayout.horizontalPadding)
@@ -1000,21 +1034,12 @@ struct AccountCompactRow: View {
                     .controlSize(.mini)
                     .scaleEffect(0.65)
             } else if canShowSwapControl {
-                ZStack {
-                    if !account.isClaudeAccount, let count = account.availableResetCount {
-                        BankedResetBadge(count: count, width: width)
-                            .opacity(hovered ? 0 : 1)
-                    }
-                    SwitchAccountButton(
-                        action: switchAccount,
-                        helpText: "Use in \(account.accountProvider.displayName)"
-                    )
-                        .disabled(isSwitchBlocked)
-                        .opacity(hovered ? 1 : 0)
-                        .allowsHitTesting(hovered)
-                }
-            } else if !account.isClaudeAccount, let count = account.availableResetCount {
-                BankedResetBadge(count: count, width: width)
+                SwitchAccountButton(
+                    action: switchAccount,
+                    helpText: "Switch to this account in \(account.accountProvider.displayName). This does not use a banked reset."
+                )
+                    .disabled(isSwitchBlocked)
+                    .opacity(isSwitchBlocked ? 0.35 : (hovered ? 1 : 0.68))
             } else {
                 Color.clear.frame(width: width, height: 1)
             }
@@ -1023,34 +1048,74 @@ struct AccountCompactRow: View {
     }
 }
 
-struct BankedResetBadge: View {
-    let count: Int
+struct BankedResetListView: View {
+    let count: Int?
+    let expirations: [Date]?
     let width: CGFloat
 
     var body: some View {
-        HStack(spacing: 2) {
-            Image(systemName: "arrow.counterclockwise.circle")
-                .font(.system(size: 8.5, weight: .semibold))
-            Text("\(count)")
+        VStack(alignment: .leading, spacing: 1) {
+            Text(BankedResetFormatter.countLabel(count))
                 .font(.system(size: 9.5, weight: .semibold))
                 .monospacedDigit()
+                .foregroundStyle(count.map { $0 > 0 ? Color.primary : Color.secondary } ?? .secondary)
+
+            if count == nil {
+                detailText("Count temporarily unavailable")
+            } else if count == 0 {
+                detailText("None available")
+            } else if expirations == nil {
+                detailText("Expiration details unavailable")
+            } else {
+                ForEach(Array(displayedExpirations.enumerated()), id: \.offset) { index, date in
+                    detailText("\(index + 1). \(BankedResetFormatter.expiration(date))")
+                }
+                if missingExpirationCount > 0 {
+                    detailText("+ \(missingExpirationCount) expiration date\(missingExpirationCount == 1 ? "" : "s") unavailable")
+                }
+            }
         }
-        .foregroundStyle(count > 0 ? Theme.healthyText : Color.secondary)
-        .frame(width: width, height: 18, alignment: .center)
-        .background {
-            RoundedRectangle(cornerRadius: 5)
-                .fill(count > 0 ? Theme.activeRowSurface : Color.clear)
+        .padding(.leading, 10)
+        .frame(width: width, alignment: .leading)
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(Theme.listDivider.opacity(0.9))
+                .frame(width: 0.5)
+                .padding(.vertical, 1)
         }
-        .overlay {
-            RoundedRectangle(cornerRadius: 5)
-                .stroke(count > 0 ? Theme.activeRowBorder : Theme.metricBorder, lineWidth: 0.5)
-        }
-        .help(helpText)
-        .accessibilityLabel(helpText)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityText)
+        .allowsHitTesting(false)
     }
 
-    private var helpText: String {
-        "\(count) banked usage reset\(count == 1 ? "" : "s") available. Viewing this count does not use a reset."
+    private var displayedExpirations: [Date] {
+        guard let count, count > 0, let expirations else { return [] }
+        return Array(expirations.sorted().prefix(count))
+    }
+
+    private var missingExpirationCount: Int {
+        guard let count, count > 0, expirations != nil else { return 0 }
+        return max(0, count - displayedExpirations.count)
+    }
+
+    private var accessibilityText: String {
+        let label = BankedResetFormatter.countLabel(count).lowercased()
+        guard !displayedExpirations.isEmpty else {
+            return "\(label). Read-only information; no reset is used."
+        }
+        let dates = displayedExpirations
+            .map { BankedResetFormatter.expiration($0) }
+            .joined(separator: ", ")
+        return "\(label). Expires: \(dates). Read-only information; no reset is used."
+    }
+
+    private func detailText(_ value: String) -> some View {
+        Text(value)
+            .font(.system(size: 9.5, weight: .regular))
+            .foregroundStyle(Color.secondary)
+            .monospacedDigit()
+            .lineLimit(1)
+            .minimumScaleFactor(0.74)
     }
 }
 
@@ -1184,10 +1249,11 @@ struct SwitchAccountButton: View {
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: "arrow.triangle.2.circlepath")
-                .font(.system(size: 11, weight: .semibold))
+            Text("USE")
+                .font(.system(size: 8.5, weight: .bold))
+                .tracking(0.25)
                 .foregroundStyle(.primary.opacity(hovered ? 0.92 : 0.78))
-                .frame(width: 20, height: 18)
+                .frame(width: 27, height: 18)
                 .background(hovered ? Theme.controlHoverSurface : .clear)
                 .clipShape(RoundedRectangle(cornerRadius: Theme.controlCornerRadius, style: .continuous))
                 .overlay {

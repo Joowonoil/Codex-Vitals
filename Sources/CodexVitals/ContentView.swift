@@ -8,7 +8,7 @@ struct ContentView: View {
     @ObservedObject var githubStarPrompt: GitHubStarPromptModel
     @State private var isShowingSettings = false
 
-    static let preferredWidth: CGFloat = 652
+    static let preferredWidth: CGFloat = 870
 
     static func preferredHeight() -> CGFloat {
         let visibleHeight = NSScreen.main?.visibleFrame.height ?? 900
