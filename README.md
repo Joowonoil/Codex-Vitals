@@ -29,6 +29,7 @@
 **Codex Vitals** helps you monitor OpenAI Codex usage, reset windows, account state, and workspaces from the macOS menu bar or Windows system tray. On macOS it also manages Claude Code accounts natively. Codex and Claude remain independently signed in and switch independently.
 
 - View best-effort Codex quota and usage across all your accounts
+- On macOS, see each Codex account's available banked usage-reset count without redeeming a reset
 - Group accounts by workspace/team
 - Add local display aliases so personal accounts are easy to identify
 - Choose Usage or Manual account order and drag rows into place; the first successful drop automatically enables Manual order
@@ -47,6 +48,7 @@
 ## Features
 
 - **Codex Quota Dashboard** — Best-effort usage tracking across all linked accounts
+- **Banked Reset Visibility on macOS** — Show each Codex account's available reset count without redeeming it
 - **Workspace Grouping** — Accounts organized by team/workspace
 - **Display Aliases** — Local-only account labels for easier scanning while preserving the real email for auth and copy actions
 - **Account Health** — Visual indicators for invalid or deactivated accounts
@@ -157,6 +159,7 @@ All sensitive files are written with `0600` permissions. Codex profile removal c
 The app uses your local Codex/OpenAI auth tokens to query:
 
 - `https://chatgpt.com/backend-api/codex/usage`
+- `https://chatgpt.com/backend-api/wham/rate-limit-reset-credits`
 - `https://chatgpt.com/backend-api/accounts/check/v4-2023-04-27`
 - `https://auth.openai.com/oauth/authorize`
 - `https://auth.openai.com/oauth/token`

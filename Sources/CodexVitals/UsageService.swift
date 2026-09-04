@@ -64,9 +64,18 @@ final class UsageService: @unchecked Sendable {
             profiles: profiles,
             usages: usages
         )
-        let tokenAccountMetadata = await fetchAccountMetadata(
+        async let resetCreditCountsTask = fetchResetCreditCounts(
+            validKeys: validKeys,
+            profiles: profiles,
+            usages: usages
+        )
+        async let tokenAccountMetadataTask = fetchAccountMetadata(
             for: metadataTokens,
             forceRefresh: forceMetadataRefresh
+        )
+        let (resetCreditCounts, tokenAccountMetadata) = await (
+            resetCreditCountsTask,
+            tokenAccountMetadataTask
         )
         let accountMetadataByID = mergedAccountMetadata(from: tokenAccountMetadata)
 
@@ -161,6 +170,7 @@ final class UsageService: @unchecked Sendable {
                 sessionResetSeconds: fiveHourWindow?.resetAfterSeconds ?? 0,
                 weeklyResetSeconds: weeklyWindow?.resetAfterSeconds ?? 0,
                 quotaWindows: hasUsage ? quotaWindows : [],
+                availableResetCount: resetCreditCounts[key],
                 planRenewalDate: planRenewalDate,
                 hasError: !hasUsage,
                 errorMessage: usageError ?? (!hasUsage ? "Codex usage unavailable" : nil)
@@ -207,6 +217,15 @@ final class UsageService: @unchecked Sendable {
                 )
             }
             .sorted { $0.limitSeconds < $1.limitSeconds }
+    }
+
+    static func availableResetCount(from response: [String: Any]) -> Int? {
+        guard response["error"] == nil,
+              let value = numericValue(response["available_count"]),
+              value >= 0 else {
+            return nil
+        }
+        return Int(value)
     }
 
     private static func numericValue(_ value: Any?) -> Double? {
@@ -287,6 +306,61 @@ final class UsageService: @unchecked Sendable {
             while activeCount > 0, let (key, usage) = await group.next() {
                 activeCount -= 1
                 result[key] = usage
+                scheduleNext()
+            }
+
+            return result
+        }
+    }
+
+    private func fetchResetCreditCounts(
+        validKeys: [String],
+        profiles: [String: [String: Any]],
+        usages: [String: [String: Any]]
+    ) async -> [String: Int] {
+        let jobs: [(profileKey: String, token: String, accountID: String)] = validKeys.compactMap { key in
+            guard let profile = profiles[key],
+                  let token = accessToken(for: key, profile: profile, usages: usages),
+                  !token.isEmpty else {
+                return nil
+            }
+            let accountID = Self.resolvedAccountID(
+                usage: usages[key] ?? [:],
+                profile: profile
+            )
+            guard !accountID.isEmpty else { return nil }
+            return (key, token, accountID)
+        }
+
+        guard !jobs.isEmpty else { return [:] }
+
+        return await withTaskGroup(of: (String, Int?).self) { group in
+            var iterator = jobs.makeIterator()
+            var activeCount = 0
+            var result: [String: Int] = [:]
+
+            func scheduleNext() {
+                guard let job = iterator.next() else { return }
+                activeCount += 1
+                group.addTask { [self] in
+                    let response = await apiGet(
+                        "/backend-api/wham/rate-limit-reset-credits",
+                        token: job.token,
+                        accountID: job.accountID
+                    )
+                    return (job.profileKey, Self.availableResetCount(from: response))
+                }
+            }
+
+            for _ in 0..<min(Self.maxConcurrentRequests, jobs.count) {
+                scheduleNext()
+            }
+
+            while activeCount > 0, let (key, count) = await group.next() {
+                activeCount -= 1
+                if let count {
+                    result[key] = count
+                }
                 scheduleNext()
             }
 
@@ -415,17 +489,26 @@ final class UsageService: @unchecked Sendable {
         }
     }
 
-    private func apiGet(_ endpoint: String, token: String, timeout: TimeInterval = 10) async -> [String: Any] {
+    private func apiGet(
+        _ endpoint: String,
+        token: String,
+        accountID: String? = nil,
+        timeout: TimeInterval = 10
+    ) async -> [String: Any] {
         guard let url = URL(string: "https://chatgpt.com\(endpoint)") else {
             return ["error": "bad URL"]
         }
         var req = URLRequest(url: url, timeoutInterval: timeout)
+        req.httpMethod = "GET"
         req.setValue("Bearer \(token)",   forHTTPHeaderField: "Authorization")
         req.setValue(ua,                  forHTTPHeaderField: "User-Agent")
         req.setValue("application/json",  forHTTPHeaderField: "Accept")
         req.setValue("https://chatgpt.com",  forHTTPHeaderField: "Origin")
         req.setValue("https://chatgpt.com/", forHTTPHeaderField: "Referer")
         req.setValue("en-US,en;q=0.9",   forHTTPHeaderField: "Accept-Language")
+        if let accountID, !accountID.isEmpty {
+            req.setValue(accountID, forHTTPHeaderField: "ChatGPT-Account-ID")
+        }
         do {
             let (data, response) = try await URLSession.shared.data(for: req)
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0

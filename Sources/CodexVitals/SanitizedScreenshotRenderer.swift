@@ -75,6 +75,7 @@ enum SanitizedScreenshotRenderer {
                 fiveHourReset: 9_800,
                 weeklyReset: 345_600,
                 provider: .codex,
+                availableResets: 2,
                 planDaysRemaining: 5
             ),
             account(
@@ -89,6 +90,7 @@ enum SanitizedScreenshotRenderer {
                 fiveHourReset: 14_400,
                 weeklyReset: 432_000,
                 provider: .codex,
+                availableResets: 0,
                 planDaysRemaining: 23,
                 singleWindowSeconds: 30 * 24 * 60 * 60
             ),
@@ -104,6 +106,7 @@ enum SanitizedScreenshotRenderer {
                 fiveHourReset: 7_200,
                 weeklyReset: 518_400,
                 provider: .codex,
+                availableResets: 1,
                 planDaysRemaining: 1
             ),
             account(
@@ -160,6 +163,7 @@ enum SanitizedScreenshotRenderer {
         fiveHourReset: TimeInterval,
         weeklyReset: TimeInterval,
         provider: AccountProvider,
+        availableResets: Int? = nil,
         providerProfileID: String? = nil,
         providerIsActive: Bool = false,
         fable: Double? = nil,
@@ -202,6 +206,7 @@ enum SanitizedScreenshotRenderer {
             sessionResetSeconds: fiveHourReset,
             weeklyResetSeconds: weeklyReset,
             quotaWindows: windows,
+            availableResetCount: availableResets,
             fableQuotaWindow: fable.map {
                 QuotaWindow(
                     limitSeconds: QuotaWindow.weeklySeconds,

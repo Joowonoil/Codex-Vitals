@@ -93,6 +93,7 @@ final class AccountListVisibilityTests: XCTestCase {
 
         XCTAssertTrue(account.isFreeWaitingForReset)
         XCTAssertFalse(account.isUsableForCodex)
+        XCTAssertTrue(account.canSwitchProviderAccount)
         XCTAssertEqual(account.freePlanResetSeconds, 86_400)
     }
 
@@ -158,7 +159,62 @@ final class AccountListVisibilityTests: XCTestCase {
 
         XCTAssertTrue(account.isWeeklyExhausted)
         XCTAssertFalse(account.isUsableForCodex)
+        XCTAssertTrue(account.canSwitchProviderAccount)
         XCTAssertEqual(account.nextWaitingResetSeconds, 345_600)
+    }
+
+    func testErroredCodexAccountStillRequiresReconnectBeforeSwitching() {
+        let account = makeAccount(
+            id: "error@example.com|acc",
+            email: "error@example.com",
+            hasError: true
+        )
+
+        XCTAssertFalse(account.canSwitchProviderAccount)
+    }
+
+    func testExhaustedClaudeAccountCanStillBeSwitchedWhenAuthenticated() {
+        var account = makeAccount(
+            id: "claude-native:exhausted",
+            email: "claude@example.com",
+            plan: "max",
+            sessionFree: 0,
+            weeklyFree: 100,
+            sessionResetSeconds: 3_600
+        )
+        account.provider = .claude
+        account.providerStatus = "ok"
+
+        XCTAssertFalse(account.isUsableForCodex)
+        XCTAssertTrue(account.canSwitchProviderAccount)
+    }
+
+    func testResetCreditCountParsesAvailableAndZeroValues() {
+        XCTAssertEqual(
+            UsageService.availableResetCount(from: ["available_count": 3]),
+            3
+        )
+        XCTAssertEqual(
+            UsageService.availableResetCount(from: ["available_count": NSNumber(value: 0)]),
+            0
+        )
+        XCTAssertNil(UsageService.availableResetCount(from: ["available_count": -1]))
+        XCTAssertNil(UsageService.availableResetCount(from: ["error": "HTTP 401"]))
+        XCTAssertNil(UsageService.availableResetCount(from: [:]))
+    }
+
+    func testBankedResetCountSurvivesSnapshotRoundTrip() throws {
+        var account = makeAccount(
+            id: "resets@example.com|acc",
+            email: "resets@example.com",
+            hasError: false
+        )
+        account.availableResetCount = 2
+
+        let data = try JSONEncoder().encode(account)
+        let decoded = try JSONDecoder().decode(Account.self, from: data)
+
+        XCTAssertEqual(decoded.availableResetCount, 2)
     }
 
     func testQuotaWindowsUseDurationInsteadOfPrimarySecondaryPosition() {

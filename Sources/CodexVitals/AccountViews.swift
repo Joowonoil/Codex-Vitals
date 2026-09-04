@@ -1000,18 +1000,57 @@ struct AccountCompactRow: View {
                     .controlSize(.mini)
                     .scaleEffect(0.65)
             } else if canShowSwapControl {
-                SwitchAccountButton(
-                    action: switchAccount,
-                    helpText: "Use in \(account.accountProvider.displayName)"
-                )
-                    .disabled(isSwitchBlocked)
-                    .opacity(hovered ? 1 : 0)
-                    .allowsHitTesting(hovered)
+                ZStack {
+                    if !account.isClaudeAccount, let count = account.availableResetCount {
+                        BankedResetBadge(count: count, width: width)
+                            .opacity(hovered ? 0 : 1)
+                    }
+                    SwitchAccountButton(
+                        action: switchAccount,
+                        helpText: "Use in \(account.accountProvider.displayName)"
+                    )
+                        .disabled(isSwitchBlocked)
+                        .opacity(hovered ? 1 : 0)
+                        .allowsHitTesting(hovered)
+                }
+            } else if !account.isClaudeAccount, let count = account.availableResetCount {
+                BankedResetBadge(count: count, width: width)
             } else {
                 Color.clear.frame(width: width, height: 1)
             }
         }
         .frame(width: width, height: 18)
+    }
+}
+
+struct BankedResetBadge: View {
+    let count: Int
+    let width: CGFloat
+
+    var body: some View {
+        HStack(spacing: 2) {
+            Image(systemName: "arrow.counterclockwise.circle")
+                .font(.system(size: 8.5, weight: .semibold))
+            Text("\(count)")
+                .font(.system(size: 9.5, weight: .semibold))
+                .monospacedDigit()
+        }
+        .foregroundStyle(count > 0 ? Theme.healthyText : Color.secondary)
+        .frame(width: width, height: 18, alignment: .center)
+        .background {
+            RoundedRectangle(cornerRadius: 5)
+                .fill(count > 0 ? Theme.activeRowSurface : Color.clear)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 5)
+                .stroke(count > 0 ? Theme.activeRowBorder : Theme.metricBorder, lineWidth: 0.5)
+        }
+        .help(helpText)
+        .accessibilityLabel(helpText)
+    }
+
+    private var helpText: String {
+        "\(count) banked usage reset\(count == 1 ? "" : "s") available. Viewing this count does not use a reset."
     }
 }
 

@@ -91,6 +91,9 @@ struct Account: Identifiable, Equatable, Codable, Sendable {
     let sessionResetSeconds: Double
     let weeklyResetSeconds: Double
     var quotaWindows: [QuotaWindow]? = nil
+    /// Banked usage-limit resets currently available for this Codex account.
+    /// `nil` means the best-effort reset-credit lookup was unavailable.
+    var availableResetCount: Int? = nil
     var fableQuotaWindow: QuotaWindow? = nil
     var planRenewalDate: Date?
     let hasError: Bool
@@ -242,10 +245,12 @@ struct Account: Identifiable, Equatable, Codable, Sendable {
     }
 
     var canSwitchProviderAccount: Bool {
-        guard isClaudeAccount else { return isUsableForCodex }
+        guard isClaudeAccount else {
+            return !hasError && !usageWindows.isEmpty
+        }
         switch providerStatus {
         case "ok":
-            return isUsableForCodex
+            return !hasError && !usageWindows.isEmpty
         case "unavailable":
             return true
         default:

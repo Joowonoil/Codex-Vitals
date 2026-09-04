@@ -2,6 +2,11 @@
 
 All notable changes to Codex Vitals will be documented here.
 
+## Unreleased
+
+- Allowed authenticated Codex and Claude accounts to be selected manually even when their current quota is at zero.
+- Added a read-only per-account count of available banked Codex usage resets on macOS; displaying the count never redeems a reset.
+
 ## 1.6.2 - 2026-09-02
 
 - Suppressed stale Claude credential errors when no Claude accounts are configured, while preserving authentication errors for registered Claude accounts.
