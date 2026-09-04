@@ -231,6 +231,152 @@ final class ClaudeNativeServiceTests: XCTestCase {
         XCTAssertEqual(result.errorMessage, "Claude credentials are invalid.")
     }
 
+    func testRetryAfterParserReadsDelaySeconds() throws {
+        let response = try XCTUnwrap(HTTPURLResponse(
+            url: URL(string: "https://api.anthropic.com/api/oauth/usage")!,
+            statusCode: 429,
+            httpVersion: nil,
+            headerFields: ["Retry-After": "768"]
+        ))
+
+        XCTAssertEqual(ClaudeUsageClient.retryAfterSeconds(from: response), 768)
+    }
+
+    func testClaudeUsageUsesFifteenMinuteMinimumAndHonorsLongerRetryAfter() async throws {
+        let root = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let oauth = oauthAccount(email: "configured@example.com", uuid: "configured-account")
+        let accountStore = ClaudeAccountStore(storeURL: root.appendingPathComponent("accounts.json"))
+        let profile = try accountStore.upsert(
+            identity: ClaudeIdentity(oauthAccount: oauth),
+            oauthAccount: oauth
+        )
+        let rawCredential = credential(access: "active-access")
+        let keychain = FakeClaudeKeychain()
+        try keychain.write(
+            service: ClaudeKeychainStore.activeService,
+            account: keychain.activeAccountName,
+            value: rawCredential
+        )
+        let successfulUsage = try usageResult(credential: rawCredential, now: now)
+        let usageProvider = SequenceClaudeUsageProvider(results: [
+            .success(successfulUsage),
+            .failure(.rateLimited(retryAfter: 30 * 60)),
+            .success(successfulUsage),
+        ])
+        let service = ClaudeAccountService(
+            keychain: keychain,
+            accountStore: accountStore,
+            configStore: FakeClaudeConfig(object: ["oauthAccount": oauth]),
+            usageClient: usageProvider
+        )
+
+        let first = await service.loadAccounts(now: now)
+        let firstCallCount = await usageProvider.numberOfCalls()
+        XCTAssertEqual(firstCallCount, 1)
+        XCTAssertEqual(first.accounts.first?.providerStatus, ClaudeAccountStatus.ok.rawValue)
+
+        let fiveMinutesLater = now.addingTimeInterval(5 * 60)
+        let withinMinimum = await service.loadAccounts(
+            previousAccounts: first.accounts,
+            previousFetchedAt: now,
+            now: fiveMinutesLater
+        )
+        let minimumIntervalCallCount = await usageProvider.numberOfCalls()
+        XCTAssertEqual(minimumIntervalCallCount, 1)
+        XCTAssertEqual(withinMinimum.accounts.first?.providerStatus, ClaudeAccountStatus.cached.rawValue)
+        XCTAssertTrue(try XCTUnwrap(withinMinimum.accounts.first).canSwitchProviderAccount)
+        let cachedReset = try XCTUnwrap(
+            withinMinimum.accounts.first?.fiveHourQuotaWindow?.resetAfterSeconds
+        )
+        XCTAssertEqual(
+            cachedReset,
+            TimeInterval(55 * 60),
+            accuracy: 1
+        )
+
+        let afterMinimum = now.addingTimeInterval(15 * 60 + 1)
+        let rateLimited = await service.loadAccounts(
+            previousAccounts: withinMinimum.accounts,
+            previousFetchedAt: fiveMinutesLater,
+            now: afterMinimum
+        )
+        let rateLimitedCallCount = await usageProvider.numberOfCalls()
+        XCTAssertEqual(rateLimitedCallCount, 2)
+        XCTAssertEqual(rateLimited.accounts.first?.providerStatus, ClaudeAccountStatus.cached.rawValue)
+        XCTAssertFalse(try XCTUnwrap(rateLimited.accounts.first).hasError)
+
+        _ = await service.loadAccounts(
+            previousAccounts: rateLimited.accounts,
+            previousFetchedAt: afterMinimum,
+            now: now.addingTimeInterval(30 * 60)
+        )
+        let retryWaitCallCount = await usageProvider.numberOfCalls()
+        XCTAssertEqual(retryWaitCallCount, 2)
+
+        let afterRetry = now.addingTimeInterval(45 * 60 + 2)
+        let refreshed = await service.loadAccounts(
+            previousAccounts: rateLimited.accounts,
+            previousFetchedAt: afterMinimum,
+            now: afterRetry
+        )
+        let refreshedCallCount = await usageProvider.numberOfCalls()
+        XCTAssertEqual(refreshedCallCount, 3)
+        XCTAssertEqual(refreshed.accounts.first?.providerProfileID, profile.id)
+        XCTAssertEqual(refreshed.accounts.first?.providerStatus, ClaudeAccountStatus.ok.rawValue)
+    }
+
+    func testRateLimitAfterRelaunchFallsBackToSavedClaudeSnapshot() async throws {
+        let root = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let oauth = oauthAccount(email: "configured@example.com", uuid: "configured-account")
+        let accountStore = ClaudeAccountStore(storeURL: root.appendingPathComponent("accounts.json"))
+        _ = try accountStore.upsert(
+            identity: ClaudeIdentity(oauthAccount: oauth),
+            oauthAccount: oauth
+        )
+        let rawCredential = credential(access: "active-access")
+        let keychain = FakeClaudeKeychain()
+        try keychain.write(
+            service: ClaudeKeychainStore.activeService,
+            account: keychain.activeAccountName,
+            value: rawCredential
+        )
+        let initialProvider = SequenceClaudeUsageProvider(results: [
+            .success(try usageResult(credential: rawCredential, now: now)),
+        ])
+        let initialService = ClaudeAccountService(
+            keychain: keychain,
+            accountStore: accountStore,
+            configStore: FakeClaudeConfig(object: ["oauthAccount": oauth]),
+            usageClient: initialProvider
+        )
+        let saved = await initialService.loadAccounts(now: now)
+        let rateLimitedProvider = SequenceClaudeUsageProvider(results: [
+            .failure(.rateLimited(retryAfter: 15 * 60)),
+        ])
+        let relaunchedService = ClaudeAccountService(
+            keychain: keychain,
+            accountStore: accountStore,
+            configStore: FakeClaudeConfig(object: ["oauthAccount": oauth]),
+            usageClient: rateLimitedProvider
+        )
+
+        let result = await relaunchedService.loadAccounts(
+            previousAccounts: saved.accounts,
+            previousFetchedAt: now,
+            now: now.addingTimeInterval(60)
+        )
+
+        let callCount = await rateLimitedProvider.numberOfCalls()
+        XCTAssertEqual(callCount, 1)
+        XCTAssertEqual(result.accounts.first?.providerStatus, ClaudeAccountStatus.cached.rawValue)
+        XCTAssertFalse(try XCTUnwrap(result.accounts.first).hasError)
+        XCTAssertFalse(try XCTUnwrap(result.accounts.first).usageWindows.isEmpty)
+    }
+
     func testNativeSwitchPreservesLiveSharedFieldsAndOnlyReplacesOAuthAccount() async throws {
         let fixture = try makeSwitchFixture()
         defer { try? FileManager.default.removeItem(at: fixture.root) }
@@ -396,6 +542,22 @@ final class ClaudeNativeServiceTests: XCTestCase {
         return String(data: try! jsonData(root), encoding: .utf8)!
     }
 
+    private func usageResult(credential: String, now: Date) throws -> ClaudeUsageResult {
+        let formatter = ISO8601DateFormatter()
+        let fiveHourReset = formatter.string(from: now.addingTimeInterval(60 * 60))
+        let weeklyReset = formatter.string(from: now.addingTimeInterval(7 * 24 * 60 * 60))
+        let data = Data(#"""
+        {
+          "five_hour": { "utilization": 25, "resets_at": "\#(fiveHourReset)" },
+          "seven_day": { "utilization": 40, "resets_at": "\#(weeklyReset)" }
+        }
+        """#.utf8)
+        return ClaudeUsageResult(
+            credential: credential,
+            response: try JSONDecoder().decode(ClaudeUsageResponse.self, from: data)
+        )
+    }
+
     private func jsonData(_ object: Any) throws -> Data {
         try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
     }
@@ -487,6 +649,29 @@ private struct UnusedClaudeUsageProvider: ClaudeUsageProviding {
         refreshIfNeeded: Bool
     ) async throws -> ClaudeUsageResult {
         throw TestFailure.expected
+    }
+}
+
+private actor SequenceClaudeUsageProvider: ClaudeUsageProviding {
+    private var results: [Result<ClaudeUsageResult, ClaudeNativeError>]
+    private var callCount = 0
+
+    init(results: [Result<ClaudeUsageResult, ClaudeNativeError>]) {
+        self.results = results
+    }
+
+    func fetchUsage(
+        credential: String,
+        expectedAccountUUID: String?,
+        refreshIfNeeded: Bool
+    ) async throws -> ClaudeUsageResult {
+        callCount += 1
+        guard !results.isEmpty else { throw TestFailure.expected }
+        return try results.removeFirst().get()
+    }
+
+    func numberOfCalls() -> Int {
+        callCount
     }
 }
 

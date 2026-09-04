@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Joowonoil/Codex-Vitals/releases/download/v1.6.2/CodexVitals-1.6.2.dmg"><strong>Download for macOS</strong></a>
+  <a href="https://github.com/Joowonoil/Codex-Vitals/releases/download/v1.6.3/CodexVitals-1.6.3.dmg"><strong>Download for macOS</strong></a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
   <a href="https://github.com/Joowonoil/Codex-Vitals/releases/download/windows-v1.0.0/CodexVitals-Windows-1.0.0-Setup.exe"><strong>Download for Windows</strong></a>
 </p>
@@ -58,7 +58,7 @@
 - **Secure Token Storage** — Saved Claude credentials use the macOS Keychain; sensitive Codex files use owner-only permissions
 - **Settings Panel** — Manage Launch at Login, usage refresh, reset notifications, and application updates inside the menu bar popover
 - **Signed Automatic Updates** — Sparkle on macOS and WinSparkle on direct Windows builds verify EdDSA signatures before installation
-- **Network-Friendly Refresh** — Automatic usage refresh defaults to 10 minutes, metadata is cached, and account requests are throttled
+- **Network-Friendly Refresh** — Automatic usage refresh defaults to 10 minutes, Claude requests use a 15-minute minimum and honor Anthropic backoff, and metadata is cached
 - **Usage or Manual Ordering** — Keep the usage-based recommendation order or drag rows into a persistent manual order, independently within Codex and Claude
 
 ## Check, Switch, and Continue
@@ -171,7 +171,7 @@ For Claude support on macOS, the app uses the official Claude Code CLI for inter
 
 These are not official public APIs and may change without notice.
 
-Automatic usage refresh defaults to 10 minutes. Account metadata is cached for 6 hours during automatic refreshes, while manual refresh always requests fresh usage and metadata.
+Automatic usage refresh defaults to 10 minutes. Account metadata is cached for 6 hours during automatic refreshes. Manual refresh requests fresh Codex usage and metadata immediately; Claude usage remains limited to once per account every 15 minutes and honors Anthropic `Retry-After` responses while retaining the last successful reading.
 
 Application update checks are separate from account refreshes. Sparkle and WinSparkle check at most once every 24 hours by default, and automatic checks can be changed in Settings. Microsoft Store builds leave updates to the Store.
 

@@ -52,9 +52,23 @@ final class ClaudeUsageClient: ClaudeUsageProviding, @unchecked Sendable {
             return ClaudeUsageResult(credential: credential.rawValue, response: decoded)
         case 401, 403:
             throw ClaudeNativeError.refreshRejected
+        case 429:
+            throw ClaudeNativeError.rateLimited(
+                retryAfter: Self.retryAfterSeconds(from: response as? HTTPURLResponse)
+            )
         default:
             throw ClaudeNativeError.serviceUnavailable(status)
         }
+    }
+
+    static func retryAfterSeconds(from response: HTTPURLResponse?) -> TimeInterval? {
+        guard let rawValue = response?.value(forHTTPHeaderField: "Retry-After")?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !rawValue.isEmpty else {
+            return nil
+        }
+        guard let seconds = TimeInterval(rawValue) else { return nil }
+        return max(0, seconds)
     }
 
     private func refresh(
@@ -82,6 +96,11 @@ final class ClaudeUsageClient: ClaudeUsageProviding, @unchecked Sendable {
         }
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard status == 200 else {
+            if status == 429 {
+                throw ClaudeNativeError.rateLimited(
+                    retryAfter: Self.retryAfterSeconds(from: response as? HTTPURLResponse)
+                )
+            }
             if status == 400 || status == 401 || status == 403 {
                 throw ClaudeNativeError.refreshRejected
             }

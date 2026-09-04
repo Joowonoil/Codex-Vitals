@@ -647,6 +647,9 @@ struct AccountCompactRow: View {
             && !needsRelogin
             && !isRelogging
     }
+    private var isUsingCachedClaudeUsage: Bool {
+        account.isClaudeAccount && account.providerStatus == ClaudeAccountStatus.cached.rawValue
+    }
 
     private var rowBackgroundColor: Color {
         if isActiveAccount {
@@ -1000,18 +1003,33 @@ struct AccountCompactRow: View {
                     .controlSize(.mini)
                     .scaleEffect(0.65)
             } else if canShowSwapControl {
-                SwitchAccountButton(
-                    action: switchAccount,
-                    helpText: "Use in \(account.accountProvider.displayName)"
-                )
-                    .disabled(isSwitchBlocked)
-                    .opacity(hovered ? 1 : 0)
-                    .allowsHitTesting(hovered)
+                ZStack {
+                    if isUsingCachedClaudeUsage {
+                        cachedUsageIndicator
+                            .opacity(hovered ? 0 : 1)
+                    }
+                    SwitchAccountButton(
+                        action: switchAccount,
+                        helpText: "Use in \(account.accountProvider.displayName)"
+                    )
+                        .disabled(isSwitchBlocked)
+                        .opacity(hovered ? 1 : 0)
+                        .allowsHitTesting(hovered)
+                }
+            } else if isUsingCachedClaudeUsage {
+                cachedUsageIndicator
             } else {
                 Color.clear.frame(width: width, height: 1)
             }
         }
         .frame(width: width, height: 18)
+    }
+
+    private var cachedUsageIndicator: some View {
+        Image(systemName: "clock.arrow.circlepath")
+            .font(.system(size: 10, weight: .medium))
+            .foregroundStyle(.secondary)
+            .help("Showing the last successful Claude usage while refresh is paused")
     }
 }
 

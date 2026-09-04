@@ -298,7 +298,10 @@ final class UsageViewModel: ObservableObject {
 
         Task {
             async let codexAccounts = service.loadAll(forceMetadataRefresh: forceMetadataRefresh)
-            async let claudeResult = claudeService.loadAccounts()
+            async let claudeResult = claudeService.loadAccounts(
+                previousAccounts: previousAccounts,
+                previousFetchedAt: previousRefresh
+            )
             let (loadedCodexAccounts, loadedClaudeResult) = await (codexAccounts, claudeResult)
             let loadedAccounts = loadedCodexAccounts + loadedClaudeResult.accounts
             if let claudeError = loadedClaudeResult.errorMessage {

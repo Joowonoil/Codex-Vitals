@@ -244,7 +244,7 @@ struct Account: Identifiable, Equatable, Codable, Sendable {
     var canSwitchProviderAccount: Bool {
         guard isClaudeAccount else { return isUsableForCodex }
         switch providerStatus {
-        case "ok":
+        case "ok", "cached":
             return isUsableForCodex
         case "unavailable":
             return true

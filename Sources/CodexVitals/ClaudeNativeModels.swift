@@ -2,6 +2,7 @@ import Foundation
 
 enum ClaudeAccountStatus: String, Equatable {
     case ok
+    case cached
     case tokenExpired = "token_expired"
     case reloginRequired = "relogin_required"
     case noCredentials = "no_credentials"
@@ -10,7 +11,7 @@ enum ClaudeAccountStatus: String, Equatable {
 
     var errorMessage: String? {
         switch self {
-        case .ok:
+        case .ok, .cached:
             return nil
         case .tokenExpired:
             return "Claude access token expired."
@@ -299,7 +300,7 @@ struct ClaudeUsageResponse: Decodable, Sendable {
     }
 }
 
-enum ClaudeNativeError: LocalizedError, Equatable {
+enum ClaudeNativeError: LocalizedError, Equatable, Sendable {
     case claudeCLIUnavailable
     case keychainUnavailable(String)
     case keychainValueTooLarge
@@ -312,6 +313,7 @@ enum ClaudeNativeError: LocalizedError, Equatable {
     case loginTimedOut
     case wrongAccount(expected: String, actual: String)
     case refreshRejected
+    case rateLimited(retryAfter: TimeInterval?)
     case networkUnavailable
     case serviceUnavailable(Int)
     case switchVerificationFailed
@@ -342,6 +344,8 @@ enum ClaudeNativeError: LocalizedError, Equatable {
             return "Expected \(expected), but Claude signed in as \(actual). The signed-in account was added separately."
         case .refreshRejected:
             return "Claude refresh token was rejected; re-login required."
+        case .rateLimited:
+            return "Claude usage refresh is temporarily rate limited."
         case .networkUnavailable:
             return "Claude usage service is temporarily unavailable."
         case let .serviceUnavailable(status):

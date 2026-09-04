@@ -2,6 +2,11 @@
 
 All notable changes to Codex Vitals will be documented here.
 
+## 1.6.3 - 2026-09-04
+
+- Added a per-account 15-minute minimum refresh interval for Claude while preserving the selected Codex refresh interval.
+- Honored Anthropic `Retry-After` responses and kept the last successful Claude usage visible during rate limits and transient service failures.
+
 ## 1.6.2 - 2026-09-02
 
 - Suppressed stale Claude credential errors when no Claude accounts are configured, while preserving authentication errors for registered Claude accounts.

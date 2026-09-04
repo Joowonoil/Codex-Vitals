@@ -7,12 +7,22 @@ struct ClaudeNativeLoadResult {
 }
 
 actor ClaudeAccountService {
+    static let minimumUsageRefreshInterval: TimeInterval = 15 * 60
+
+    private struct CachedUsage {
+        let windows: [QuotaWindow]
+        let fableWindow: QuotaWindow?
+        let fetchedAt: Date
+    }
+
     private let keychain: any ClaudeKeychainStoring
     private let accountStore: ClaudeAccountStore
     private let configStore: any ClaudeGlobalConfigStoring
     private let usageClient: any ClaudeUsageProviding
     private let fileManager: FileManager
     private var loginProcess: Process?
+    private var usageCache: [String: CachedUsage] = [:]
+    private var nextAllowedUsageRefresh: [String: Date] = [:]
 
     init(
         keychain: any ClaudeKeychainStoring = ClaudeKeychainStore(),
@@ -28,7 +38,12 @@ actor ClaudeAccountService {
         self.fileManager = fileManager
     }
 
-    func loadAccounts(now: Date = Date()) async -> ClaudeNativeLoadResult {
+    func loadAccounts(
+        previousAccounts: [Account] = [],
+        previousFetchedAt: Date? = nil,
+        now: Date = Date()
+    ) async -> ClaudeNativeLoadResult {
+        seedUsageCache(from: previousAccounts, fetchedAt: previousFetchedAt)
         var integrationError: String?
         do {
             try recoverInterruptedSwitchIfNeeded()
@@ -74,6 +89,7 @@ actor ClaudeAccountService {
         try await runLogin(email: nil)
         let profile = try captureLoggedInAccount(expectedProfile: nil)
         try accountStore.setHidden(profileID: profile.id, hidden: false)
+        invalidateUsageState(profileID: profile.id)
         return try accountStore.profile(id: profile.id) ?? profile
     }
 
@@ -89,6 +105,7 @@ actor ClaudeAccountService {
             throw ClaudeNativeError.wrongAccount(expected: expected.email, actual: actual.email)
         }
         try accountStore.setHidden(profileID: actual.id, hidden: false)
+        invalidateUsageState(profileID: actual.id)
         return try accountStore.profile(id: actual.id) ?? actual
     }
 
@@ -119,6 +136,7 @@ actor ClaudeAccountService {
         if let active = try currentConfigIfPresent()?.oauthAccount,
            profile.matches(oauthAccount: active) {
             try accountStore.setHidden(profileID: profileID, hidden: true)
+            invalidateUsageState(profileID: profileID)
             return
         }
 
@@ -137,6 +155,7 @@ actor ClaudeAccountService {
                 account: previousCredentialAccount(profileID)
             )
             try accountStore.remove(profileID: profileID)
+            invalidateUsageState(profileID: profileID)
         } catch {
             if let credential {
                 try? keychain.write(
@@ -226,6 +245,11 @@ actor ClaudeAccountService {
         isActive: Bool,
         now: Date
     ) async -> Account {
+        if let nextRefresh = nextAllowedUsageRefresh[profile.id], now < nextRefresh {
+            return cachedAccount(profile, isActive: isActive, now: now)
+                ?? account(profile, isActive: isActive, status: .unavailable, windows: [])
+        }
+
         do {
             let credential: String?
             if isActive {
@@ -261,6 +285,16 @@ actor ClaudeAccountService {
             }
             let windows = usageWindows(result.response, now: now)
             let fableWindow = fableQuotaWindow(result.response, now: now)
+            if !windows.isEmpty {
+                usageCache[profile.id] = CachedUsage(
+                    windows: windows,
+                    fableWindow: fableWindow,
+                    fetchedAt: now
+                )
+            }
+            nextAllowedUsageRefresh[profile.id] = now.addingTimeInterval(
+                Self.minimumUsageRefreshInterval
+            )
             return account(
                 profile,
                 isActive: isActive,
@@ -277,6 +311,18 @@ actor ClaudeAccountService {
                 status = .noCredentials
             case .keychainUnavailable:
                 status = .keychainUnavailable
+            case let .rateLimited(retryAfter):
+                deferUsageRefresh(profileID: profile.id, now: now, retryAfter: retryAfter)
+                return cachedAccount(profile, isActive: isActive, now: now)
+                    ?? account(profile, isActive: isActive, status: .unavailable, windows: [])
+            case .networkUnavailable:
+                deferUsageRefresh(profileID: profile.id, now: now)
+                return cachedAccount(profile, isActive: isActive, now: now)
+                    ?? account(profile, isActive: isActive, status: .unavailable, windows: [])
+            case let .serviceUnavailable(statusCode) where statusCode >= 500:
+                deferUsageRefresh(profileID: profile.id, now: now)
+                return cachedAccount(profile, isActive: isActive, now: now)
+                    ?? account(profile, isActive: isActive, status: .unavailable, windows: [])
             default:
                 status = .unavailable
             }
@@ -295,7 +341,7 @@ actor ClaudeAccountService {
     ) -> Account {
         let fiveHour = windows.first { $0.kind == .fiveHour }
         let weekly = windows.first { $0.kind == .weekly }
-        let hasUsage = status == .ok && !windows.isEmpty
+        let hasUsage = (status == .ok || status == .cached) && !windows.isEmpty
         return Account(
             id: "claude-native:\(profile.id)",
             profileKey: nil,
@@ -319,6 +365,60 @@ actor ClaudeAccountService {
             providerIsActive: isActive,
             providerStatus: status.rawValue
         )
+    }
+
+    private func seedUsageCache(from accounts: [Account], fetchedAt: Date?) {
+        guard let fetchedAt else { return }
+        for account in accounts where account.isClaudeAccount && !account.hasError {
+            guard let profileID = account.providerProfileID,
+                  usageCache[profileID] == nil,
+                  !account.usageWindows.isEmpty else {
+                continue
+            }
+            usageCache[profileID] = CachedUsage(
+                windows: account.usageWindows,
+                fableWindow: account.fableQuotaWindow,
+                fetchedAt: fetchedAt
+            )
+        }
+    }
+
+    private func cachedAccount(
+        _ profile: ClaudeNativeProfile,
+        isActive: Bool,
+        now: Date
+    ) -> Account? {
+        guard let cached = usageCache[profile.id] else { return nil }
+        let elapsed = max(0, now.timeIntervalSince(cached.fetchedAt))
+        return account(
+            profile,
+            isActive: isActive,
+            status: .cached,
+            windows: cached.windows.map { adjusted($0, elapsed: elapsed) },
+            fableWindow: cached.fableWindow.map { adjusted($0, elapsed: elapsed) }
+        )
+    }
+
+    private func adjusted(_ window: QuotaWindow, elapsed: TimeInterval) -> QuotaWindow {
+        QuotaWindow(
+            limitSeconds: window.limitSeconds,
+            remainingPercent: window.remainingPercent,
+            resetAfterSeconds: max(0, window.resetAfterSeconds - elapsed)
+        )
+    }
+
+    private func deferUsageRefresh(
+        profileID: String,
+        now: Date,
+        retryAfter: TimeInterval? = nil
+    ) {
+        let delay = max(Self.minimumUsageRefreshInterval, retryAfter ?? 0)
+        nextAllowedUsageRefresh[profileID] = now.addingTimeInterval(delay)
+    }
+
+    private func invalidateUsageState(profileID: String) {
+        usageCache[profileID] = nil
+        nextAllowedUsageRefresh[profileID] = nil
     }
 
     private func usageWindows(_ response: ClaudeUsageResponse, now: Date) -> [QuotaWindow] {
