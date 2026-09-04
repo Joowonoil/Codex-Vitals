@@ -262,7 +262,7 @@ final class ClaudeNativeServiceTests: XCTestCase {
         let successfulUsage = try usageResult(credential: rawCredential, now: now)
         let usageProvider = SequenceClaudeUsageProvider(results: [
             .success(successfulUsage),
-            .failure(.rateLimited(retryAfter: 30 * 60)),
+            .failure(.rateLimited(retryAfter: TimeInterval(30 * 60))),
             .success(successfulUsage),
         ])
         let service = ClaudeAccountService(
@@ -286,9 +286,10 @@ final class ClaudeNativeServiceTests: XCTestCase {
         let minimumIntervalCallCount = await usageProvider.numberOfCalls()
         XCTAssertEqual(minimumIntervalCallCount, 1)
         XCTAssertEqual(withinMinimum.accounts.first?.providerStatus, ClaudeAccountStatus.cached.rawValue)
-        XCTAssertTrue(try XCTUnwrap(withinMinimum.accounts.first).canSwitchProviderAccount)
+        let cachedAccount = try XCTUnwrap(withinMinimum.accounts.first)
+        XCTAssertTrue(cachedAccount.canSwitchProviderAccount)
         let cachedReset = try XCTUnwrap(
-            withinMinimum.accounts.first?.fiveHourQuotaWindow?.resetAfterSeconds
+            cachedAccount.fiveHourQuotaWindow?.resetAfterSeconds
         )
         XCTAssertEqual(
             cachedReset,
@@ -305,7 +306,8 @@ final class ClaudeNativeServiceTests: XCTestCase {
         let rateLimitedCallCount = await usageProvider.numberOfCalls()
         XCTAssertEqual(rateLimitedCallCount, 2)
         XCTAssertEqual(rateLimited.accounts.first?.providerStatus, ClaudeAccountStatus.cached.rawValue)
-        XCTAssertFalse(try XCTUnwrap(rateLimited.accounts.first).hasError)
+        let rateLimitedAccount = try XCTUnwrap(rateLimited.accounts.first)
+        XCTAssertFalse(rateLimitedAccount.hasError)
 
         _ = await service.loadAccounts(
             previousAccounts: rateLimited.accounts,
@@ -355,7 +357,7 @@ final class ClaudeNativeServiceTests: XCTestCase {
         )
         let saved = await initialService.loadAccounts(now: now)
         let rateLimitedProvider = SequenceClaudeUsageProvider(results: [
-            .failure(.rateLimited(retryAfter: 15 * 60)),
+            .failure(.rateLimited(retryAfter: TimeInterval(15 * 60))),
         ])
         let relaunchedService = ClaudeAccountService(
             keychain: keychain,
@@ -373,8 +375,9 @@ final class ClaudeNativeServiceTests: XCTestCase {
         let callCount = await rateLimitedProvider.numberOfCalls()
         XCTAssertEqual(callCount, 1)
         XCTAssertEqual(result.accounts.first?.providerStatus, ClaudeAccountStatus.cached.rawValue)
-        XCTAssertFalse(try XCTUnwrap(result.accounts.first).hasError)
-        XCTAssertFalse(try XCTUnwrap(result.accounts.first).usageWindows.isEmpty)
+        let cachedAccount = try XCTUnwrap(result.accounts.first)
+        XCTAssertFalse(cachedAccount.hasError)
+        XCTAssertFalse(cachedAccount.usageWindows.isEmpty)
     }
 
     func testNativeSwitchPreservesLiveSharedFieldsAndOnlyReplacesOAuthAccount() async throws {
