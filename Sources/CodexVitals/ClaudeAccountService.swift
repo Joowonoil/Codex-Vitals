@@ -23,6 +23,7 @@ actor ClaudeAccountService {
     private var loginProcess: Process?
     private var usageCache: [String: CachedUsage] = [:]
     private var nextAllowedUsageRefresh: [String: Date] = [:]
+    private var nextAllowedActiveCredentialRead: Date?
 
     init(
         keychain: any ClaudeKeychainStoring = ClaudeKeychainStore(),
@@ -45,11 +46,25 @@ actor ClaudeAccountService {
     ) async -> ClaudeNativeLoadResult {
         seedUsageCache(from: previousAccounts, fetchedAt: previousFetchedAt)
         var integrationError: String?
-        do {
-            try recoverInterruptedSwitchIfNeeded()
-            _ = try captureCurrentActiveIfAvailable()
-        } catch {
-            integrationError = error.localizedDescription
+        var activeCredentialUnavailable = false
+        if let nextRead = nextAllowedActiveCredentialRead, now < nextRead {
+            activeCredentialUnavailable = true
+        } else {
+            do {
+                try recoverInterruptedSwitchIfNeeded()
+                _ = try captureCurrentActiveIfAvailable()
+                nextAllowedActiveCredentialRead = nil
+            } catch let error as ClaudeNativeError {
+                integrationError = error.localizedDescription
+                if case .keychainUnavailable = error {
+                    activeCredentialUnavailable = true
+                    nextAllowedActiveCredentialRead = now.addingTimeInterval(
+                        Self.minimumUsageRefreshInterval
+                    )
+                }
+            } catch {
+                integrationError = error.localizedDescription
+            }
         }
 
         let profiles: [ClaudeNativeProfile]
@@ -68,7 +83,15 @@ actor ClaudeAccountService {
                     let profile = profiles[index]
                     let isActive = activeOAuthAccount.map(profile.matches(oauthAccount:)) ?? false
                     group.addTask { [self] in
-                        (index, await loadAccount(profile, isActive: isActive, now: now))
+                        (
+                            index,
+                            await loadAccount(
+                                profile,
+                                isActive: isActive,
+                                activeCredentialUnavailable: activeCredentialUnavailable,
+                                now: now
+                            )
+                        )
                     }
                 }
                 for await result in group {
@@ -77,9 +100,10 @@ actor ClaudeAccountService {
             }
         }
         let accounts = indexedAccounts.sorted { $0.0 < $1.0 }.map(\.1)
+        let hasClaudeLoadError = accounts.contains { $0.isClaudeAccount && $0.hasError }
         return ClaudeNativeLoadResult(
             accounts: accounts,
-            errorMessage: profiles.isEmpty ? nil : integrationError
+            errorMessage: profiles.isEmpty || !hasClaudeLoadError ? nil : integrationError
         )
     }
 
@@ -90,6 +114,7 @@ actor ClaudeAccountService {
         let profile = try captureLoggedInAccount(expectedProfile: nil)
         try accountStore.setHidden(profileID: profile.id, hidden: false)
         invalidateUsageState(profileID: profile.id)
+        nextAllowedActiveCredentialRead = nil
         return try accountStore.profile(id: profile.id) ?? profile
     }
 
@@ -106,6 +131,7 @@ actor ClaudeAccountService {
         }
         try accountStore.setHidden(profileID: actual.id, hidden: false)
         invalidateUsageState(profileID: actual.id)
+        nextAllowedActiveCredentialRead = nil
         return try accountStore.profile(id: actual.id) ?? actual
     }
 
@@ -199,6 +225,7 @@ actor ClaudeAccountService {
             if let originalCredential {
                 try writeProfileCredential(originalCredential, profileID: target.id)
             }
+            nextAllowedActiveCredentialRead = nil
             return
         }
 
@@ -227,6 +254,7 @@ actor ClaudeAccountService {
                 service: ClaudeKeychainStore.safetyService,
                 account: ClaudeKeychainStore.safetyAccount
             )
+            nextAllowedActiveCredentialRead = nil
         } catch {
             do {
                 try restoreSwitch(
@@ -243,8 +271,15 @@ actor ClaudeAccountService {
     private func loadAccount(
         _ profile: ClaudeNativeProfile,
         isActive: Bool,
+        activeCredentialUnavailable: Bool,
         now: Date
     ) async -> Account {
+        if isActive && activeCredentialUnavailable {
+            deferUsageRefresh(profileID: profile.id, now: now)
+            return cachedAccount(profile, isActive: isActive, now: now)
+                ?? account(profile, isActive: isActive, status: .keychainUnavailable, windows: [])
+        }
+
         if let nextRefresh = nextAllowedUsageRefresh[profile.id], now < nextRefresh {
             return cachedAccount(profile, isActive: isActive, now: now)
                 ?? account(profile, isActive: isActive, status: .unavailable, windows: [])
@@ -310,7 +345,14 @@ actor ClaudeAccountService {
             case .invalidCredentials:
                 status = .noCredentials
             case .keychainUnavailable:
-                status = .keychainUnavailable
+                deferUsageRefresh(profileID: profile.id, now: now)
+                return cachedAccount(profile, isActive: isActive, now: now)
+                    ?? account(
+                        profile,
+                        isActive: isActive,
+                        status: .keychainUnavailable,
+                        windows: []
+                    )
             case let .rateLimited(retryAfter):
                 deferUsageRefresh(profileID: profile.id, now: now, retryAfter: retryAfter)
                 return cachedAccount(profile, isActive: isActive, now: now)

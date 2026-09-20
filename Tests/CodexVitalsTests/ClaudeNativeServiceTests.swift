@@ -380,6 +380,106 @@ final class ClaudeNativeServiceTests: XCTestCase {
         XCTAssertFalse(cachedAccount.usageWindows.isEmpty)
     }
 
+    func testKeychainFailureKeepsCachedUsageAndDoesNotRetryDuringCooldown() async throws {
+        let root = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let oauth = oauthAccount(email: "configured@example.com", uuid: "configured-account")
+        let accountStore = ClaudeAccountStore(storeURL: root.appendingPathComponent("accounts.json"))
+        _ = try accountStore.upsert(
+            identity: ClaudeIdentity(oauthAccount: oauth),
+            oauthAccount: oauth
+        )
+        let rawCredential = credential(access: "active-access")
+        let keychain = FakeClaudeKeychain()
+        try keychain.write(
+            service: ClaudeKeychainStore.activeService,
+            account: keychain.activeAccountName,
+            value: rawCredential
+        )
+        let usageProvider = SequenceClaudeUsageProvider(results: [
+            .success(try usageResult(credential: rawCredential, now: now)),
+        ])
+        let service = ClaudeAccountService(
+            keychain: keychain,
+            accountStore: accountStore,
+            configStore: FakeClaudeConfig(object: ["oauthAccount": oauth]),
+            usageClient: usageProvider
+        )
+        let initial = await service.loadAccounts(now: now)
+        keychain.setReadError(
+            .keychainUnavailable("command timed out"),
+            service: ClaudeKeychainStore.safetyService,
+            account: ClaudeKeychainStore.safetyAccount
+        )
+
+        let failedReadTime = now.addingTimeInterval(16 * 60)
+        let cached = await service.loadAccounts(
+            previousAccounts: initial.accounts,
+            previousFetchedAt: now,
+            now: failedReadTime
+        )
+        let readsAfterFailure = keychain.readCount(
+            service: ClaudeKeychainStore.safetyService,
+            account: ClaudeKeychainStore.safetyAccount
+        )
+        let cooldown = await service.loadAccounts(
+            previousAccounts: cached.accounts,
+            previousFetchedAt: failedReadTime,
+            now: failedReadTime.addingTimeInterval(60)
+        )
+
+        XCTAssertEqual(cached.accounts.first?.providerStatus, ClaudeAccountStatus.cached.rawValue)
+        XCTAssertFalse(try XCTUnwrap(cached.accounts.first).hasError)
+        XCTAssertNil(cached.errorMessage)
+        XCTAssertEqual(cooldown.accounts.first?.providerStatus, ClaudeAccountStatus.cached.rawValue)
+        XCTAssertEqual(
+            keychain.readCount(
+                service: ClaudeKeychainStore.safetyService,
+                account: ClaudeKeychainStore.safetyAccount
+            ),
+            readsAfterFailure
+        )
+        let usageCallCount = await usageProvider.numberOfCalls()
+        XCTAssertEqual(usageCallCount, 1)
+    }
+
+    func testKeychainProcessDrainsOutputBeforeWaitingForExit() throws {
+        let root = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let executable = root.appendingPathComponent("large-output.sh")
+        try Data("#!/bin/sh\n/usr/bin/perl -e 'print \"a\" x 32768'\n".utf8).write(to: executable)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: executable.path
+        )
+        let store = ClaudeKeychainStore(securityURL: executable, commandTimeout: 1)
+
+        let value = try XCTUnwrap(store.read(service: "service", account: "account"))
+
+        XCTAssertEqual(value.utf8.count, 32_768)
+    }
+
+    func testKeychainProcessTimesOutInsteadOfBlockingRefreshForever() throws {
+        let root = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let executable = root.appendingPathComponent("never-finishes.sh")
+        try Data("#!/bin/sh\nexec /bin/sleep 30\n".utf8).write(to: executable)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: executable.path
+        )
+        let store = ClaudeKeychainStore(securityURL: executable, commandTimeout: 0.1)
+        let started = Date()
+
+        XCTAssertThrowsError(try store.read(service: "service", account: "account")) { error in
+            guard case ClaudeNativeError.keychainUnavailable = error else {
+                return XCTFail("Expected keychainUnavailable, got \(error)")
+            }
+        }
+        XCTAssertLessThan(Date().timeIntervalSince(started), 2)
+    }
+
     func testNativeSwitchPreservesLiveSharedFieldsAndOnlyReplacesOAuthAccount() async throws {
         let fixture = try makeSwitchFixture()
         defer { try? FileManager.default.removeItem(at: fixture.root) }
@@ -587,9 +687,18 @@ private final class FakeClaudeKeychain: ClaudeKeychainStoring, @unchecked Sendab
     let activeAccountName = "tester"
     private let lock = NSLock()
     private var values: [String: String] = [:]
+    private var readErrors: [String: ClaudeNativeError] = [:]
+    private var readCounts: [String: Int] = [:]
 
     func read(service: String, account: String) throws -> String? {
-        lock.withLock { values[key(service, account)] }
+        try lock.withLock {
+            let itemKey = key(service, account)
+            readCounts[itemKey, default: 0] += 1
+            if let error = readErrors[itemKey] {
+                throw error
+            }
+            return values[itemKey]
+        }
     }
 
     func write(service: String, account: String, value: String) throws {
@@ -602,6 +711,14 @@ private final class FakeClaudeKeychain: ClaudeKeychainStoring, @unchecked Sendab
 
     func value(service: String, account: String) -> String? {
         lock.withLock { values[key(service, account)] }
+    }
+
+    func setReadError(_ error: ClaudeNativeError, service: String, account: String) {
+        lock.withLock { readErrors[key(service, account)] = error }
+    }
+
+    func readCount(service: String, account: String) -> Int {
+        lock.withLock { readCounts[key(service, account), default: 0] }
     }
 
     private func key(_ service: String, _ account: String) -> String {

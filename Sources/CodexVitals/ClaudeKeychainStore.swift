@@ -14,9 +14,18 @@ final class ClaudeKeychainStore: ClaudeKeychainStoring, @unchecked Sendable {
     static let safetyService = "com.ramterstudio.CodexVitals.Claude.Safety"
     static let safetyAccount = "last-live-credential"
 
-    private let securityURL = URL(fileURLWithPath: "/usr/bin/security")
+    private let securityURL: URL
+    private let commandTimeout: TimeInterval
     private let maximumOutputBytes = 64 * 1024
     private let maximumInteractiveCommandBytes = 4_000
+
+    init(
+        securityURL: URL = URL(fileURLWithPath: "/usr/bin/security"),
+        commandTimeout: TimeInterval = 5
+    ) {
+        self.securityURL = securityURL
+        self.commandTimeout = commandTimeout
+    }
 
     var activeAccountName: String {
         let environmentUser = ProcessInfo.processInfo.environment["USER"]?
@@ -70,30 +79,101 @@ final class ClaudeKeychainStore: ClaudeKeychainStoring, @unchecked Sendable {
         let process = Process()
         let output = Pipe()
         let errors = Pipe()
+        let stdout = BoundedProcessOutput(maximumBytes: maximumOutputBytes)
+        let stderr = BoundedProcessOutput(maximumBytes: maximumOutputBytes)
+        let readers = DispatchGroup()
+        let terminated = DispatchSemaphore(value: 0)
+        let input = standardInput.map { _ in Pipe() }
         process.executableURL = securityURL
         process.arguments = arguments
         process.standardOutput = output
         process.standardError = errors
-        if let standardInput {
-            let input = Pipe()
-            process.standardInput = input
-            try process.run()
+        process.standardInput = input
+        process.terminationHandler = { _ in terminated.signal() }
+
+        try process.run()
+        drain(output.fileHandleForReading, into: stdout, group: readers)
+        drain(errors.fileHandleForReading, into: stderr, group: readers)
+
+        if let standardInput, let input {
             input.fileHandleForWriting.write(standardInput)
             try input.fileHandleForWriting.close()
-        } else {
-            try process.run()
         }
-        process.waitUntilExit()
-        let stdout = output.fileHandleForReading.readDataToEndOfFile()
-        let stderr = errors.fileHandleForReading.readDataToEndOfFile()
-        guard stdout.count <= maximumOutputBytes, stderr.count <= maximumOutputBytes else {
+
+        if terminated.wait(timeout: .now() + commandTimeout) == .timedOut {
+            process.terminate()
+            if terminated.wait(timeout: .now() + 1) == .timedOut {
+                Darwin.kill(process.processIdentifier, SIGKILL)
+                _ = terminated.wait(timeout: .now() + 1)
+            }
+            readers.wait()
+            throw ClaudeNativeError.keychainUnavailable("command timed out")
+        }
+
+        readers.wait()
+        let stdoutResult = stdout.result
+        let stderrResult = stderr.result
+        guard !stdoutResult.exceededLimit, !stderrResult.exceededLimit else {
             throw ClaudeNativeError.keychainUnavailable("response too large")
         }
-        return ProcessResult(status: process.terminationStatus, stdout: stdout)
+        return ProcessResult(status: process.terminationStatus, stdout: stdoutResult.data)
+    }
+
+    private func drain(
+        _ handle: FileHandle,
+        into output: BoundedProcessOutput,
+        group: DispatchGroup
+    ) {
+        group.enter()
+        DispatchQueue.global(qos: .utility).async {
+            defer { group.leave() }
+            while true {
+                let chunk: Data
+                do {
+                    guard let value = try handle.read(upToCount: 4_096) else { return }
+                    chunk = value
+                } catch {
+                    return
+                }
+                guard !chunk.isEmpty else {
+                    return
+                }
+                output.append(chunk)
+            }
+        }
     }
 
     private struct ProcessResult {
         let status: Int32
         let stdout: Data
+    }
+
+    private final class BoundedProcessOutput: @unchecked Sendable {
+        private let maximumBytes: Int
+        private let lock = NSLock()
+        private var data = Data()
+        private var exceededLimit = false
+
+        init(maximumBytes: Int) {
+            self.maximumBytes = maximumBytes
+        }
+
+        func append(_ chunk: Data) {
+            lock.lock()
+            defer { lock.unlock() }
+            let remaining = max(0, maximumBytes + 1 - data.count)
+            if remaining > 0 {
+                data.append(chunk.prefix(remaining))
+            }
+            if data.count > maximumBytes || chunk.count > remaining {
+                exceededLimit = true
+            }
+        }
+
+        var result: (data: Data, exceededLimit: Bool) {
+            lock.lock()
+            defer { lock.unlock() }
+            return (data, exceededLimit)
+        }
     }
 }

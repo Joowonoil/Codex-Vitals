@@ -253,6 +253,33 @@ struct Account: Identifiable, Equatable, Codable, Sendable {
         }
     }
 
+    func agingResetTimers(by elapsed: TimeInterval) -> Account {
+        let elapsed = max(0, elapsed)
+        return Account(
+            id: id,
+            profileKey: profileKey,
+            email: email,
+            alias: alias,
+            workspace: workspace,
+            workspaceAlias: workspaceAlias,
+            plan: plan,
+            sessionFree: sessionFree,
+            weeklyFree: weeklyFree,
+            sessionResetSeconds: max(0, sessionResetSeconds - elapsed),
+            weeklyResetSeconds: max(0, weeklyResetSeconds - elapsed),
+            quotaWindows: quotaWindows?.map { $0.agingResetTimer(by: elapsed) },
+            fableQuotaWindow: fableQuotaWindow?.agingResetTimer(by: elapsed),
+            planRenewalDate: planRenewalDate,
+            hasError: hasError,
+            errorMessage: errorMessage,
+            provider: provider,
+            providerAccountNumber: providerAccountNumber,
+            providerProfileID: providerProfileID,
+            providerIsActive: providerIsActive,
+            providerStatus: providerStatus
+        )
+    }
+
     /// Hours until weekly window resets (from API `reset_after_seconds`).
     var hoursUntilWeeklyReset: Double {
         guard let weeklyQuotaWindow else { return .infinity }
@@ -280,6 +307,16 @@ struct Account: Identifiable, Equatable, Codable, Sendable {
     var planDaysRemaining: Int? {
         guard let planRenewalDate else { return nil }
         return max(0, Int(ceil(planRenewalDate.timeIntervalSinceNow / 86_400)))
+    }
+}
+
+private extension QuotaWindow {
+    func agingResetTimer(by elapsed: TimeInterval) -> QuotaWindow {
+        QuotaWindow(
+            limitSeconds: limitSeconds,
+            remainingPercent: remainingPercent,
+            resetAfterSeconds: max(0, resetAfterSeconds - elapsed)
+        )
     }
 }
 

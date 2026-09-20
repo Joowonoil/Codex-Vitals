@@ -234,6 +234,52 @@ final class AccountListVisibilityTests: XCTestCase {
         XCTAssertEqual(decoded.usageWindows.map(\.label), ["5h", "1w"])
     }
 
+    func testSnapshotResetTimersAgeAndRebaseFromTheLastRefreshDate() {
+        var account = makeAccount(
+            id: "cached@example.com|acc",
+            email: "cached@example.com",
+            plan: "plus",
+            sessionFree: 75,
+            weeklyFree: 60,
+            sessionResetSeconds: 20_000,
+            weeklyResetSeconds: 228_383
+        )
+        account.quotaWindows = [
+            QuotaWindow(
+                limitSeconds: QuotaWindow.fiveHourSeconds,
+                remainingPercent: 75,
+                resetAfterSeconds: 20_000
+            ),
+            QuotaWindow(
+                limitSeconds: QuotaWindow.weeklySeconds,
+                remainingPercent: 60,
+                resetAfterSeconds: 228_383
+            ),
+        ]
+        account.fableQuotaWindow = QuotaWindow(
+            limitSeconds: QuotaWindow.weeklySeconds,
+            remainingPercent: 40,
+            resetAfterSeconds: 200_000
+        )
+
+        let lastRefresh = Date(timeIntervalSince1970: 1_800_000_000)
+        let now = lastRefresh.addingTimeInterval(172_800)
+        let rebased = AccountSnapshotStore.rebase(
+            accounts: [account],
+            lastRefresh: lastRefresh,
+            now: now
+        )
+        let aged = rebased.accounts[0]
+
+        XCTAssertEqual(rebased.lastRefresh, now)
+        XCTAssertEqual(aged.sessionResetSeconds, 0)
+        XCTAssertEqual(aged.weeklyResetSeconds, 55_583)
+        XCTAssertEqual(aged.fiveHourQuotaWindow?.resetAfterSeconds, 0)
+        XCTAssertEqual(aged.weeklyQuotaWindow?.resetAfterSeconds, 55_583)
+        XCTAssertEqual(aged.fableQuotaWindow?.resetAfterSeconds, 27_200)
+        XCTAssertEqual(aged.weeklyQuotaWindow?.remainingPercent, 60)
+    }
+
     func testExhaustedFableWindowDoesNotDisableClaudeAccount() {
         var account = makeAccount(
             id: "claude-native:account-1",

@@ -12,12 +12,22 @@ enum AccountSnapshotStore {
         AppStorage.rootURL.appendingPathComponent("accounts-snapshot.json")
     }
 
-    static func load() -> (accounts: [Account], lastRefresh: Date?)? {
+    static func load(now: Date = Date()) -> (accounts: [Account], lastRefresh: Date?)? {
         guard let data = try? Data(contentsOf: url) else { return nil }
         let dec = JSONDecoder()
         guard let p = try? dec.decode(Payload.self, from: data), !p.accounts.isEmpty else { return nil }
         let date = p.lastRefreshEpoch.map { Date(timeIntervalSince1970: $0) }
-        return (p.accounts, date)
+        return rebase(accounts: p.accounts, lastRefresh: date, now: now)
+    }
+
+    static func rebase(
+        accounts: [Account],
+        lastRefresh: Date?,
+        now: Date
+    ) -> (accounts: [Account], lastRefresh: Date?) {
+        guard let lastRefresh else { return (accounts, nil) }
+        let elapsed = max(0, now.timeIntervalSince(lastRefresh))
+        return (accounts.map { $0.agingResetTimers(by: elapsed) }, now)
     }
 
     static func save(accounts: [Account], lastRefresh: Date?) {

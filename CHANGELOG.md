@@ -2,6 +2,11 @@
 
 All notable changes to Codex Vitals will be documented here.
 
+## 1.6.4 - 2026-09-20
+
+- Fixed refreshes getting stuck when macOS Keychain does not respond.
+- Fixed stale usage data showing incorrect reset dates.
+
 ## 1.6.3 - 2026-09-04
 
 - Added a per-account 15-minute minimum refresh interval for Claude while preserving the selected Codex refresh interval.
