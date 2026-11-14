@@ -82,6 +82,30 @@ struct QuotaWindow: Equatable, Codable, Sendable {
     }
 }
 
+struct ModelQuotaDetail: Identifiable, Equatable, Codable, Sendable {
+    let id: String
+    let label: String
+    var windows: [QuotaWindow] = []
+    var sharesMainQuota = false
+    var explanation: String? = nil
+
+    var rowCount: Int { sharesMainQuota ? 1 : max(1, windows.count) }
+
+    var tooltip: String {
+        if sharesMainQuota { return "\(label) uses the Gemini limits above, not an additional allowance." }
+        if windows.isEmpty {
+            return ["\(label) usage is unavailable.", explanation].compactMap { $0 }.joined(separator: "\n")
+        }
+        return explanation ?? "\(label) usage"
+    }
+
+    func agingResetTimers(by elapsed: TimeInterval) -> ModelQuotaDetail {
+        var aged = self
+        aged.windows = windows.map { $0.agingResetTimer(by: elapsed) }
+        return aged
+    }
+}
+
 // MARK: - Account
 
 struct Account: Identifiable, Equatable, Codable, Sendable {
@@ -99,6 +123,8 @@ struct Account: Identifiable, Equatable, Codable, Sendable {
     var quotaWindows: [QuotaWindow]? = nil
     var fableQuotaWindow: QuotaWindow? = nil
     var argonQuotaWindow: QuotaWindow? = nil
+    var geminiQuotaDetails: [ModelQuotaDetail]? = nil
+    var geminiQuotaDescription: String? = nil
     var planRenewalDate: Date?
     let hasError: Bool
     let errorMessage: String?
@@ -121,10 +147,21 @@ struct Account: Identifiable, Equatable, Codable, Sendable {
         accountProvider == .gemini
     }
 
-    var supplementaryQuota: (label: String, window: QuotaWindow)? {
-        if isGeminiAccount, let argonQuotaWindow { return ("Argon", argonQuotaWindow) }
-        if isClaudeAccount, let fableQuotaWindow { return ("Fable", fableQuotaWindow) }
-        return nil
+    var supplementaryQuotas: [ModelQuotaDetail] {
+        if isGeminiAccount {
+            if let geminiQuotaDetails { return geminiQuotaDetails }
+            if let argonQuotaWindow {
+                return [ModelQuotaDetail(id: "argon", label: "Argon", windows: [argonQuotaWindow])]
+            }
+        }
+        if isClaudeAccount, let fableQuotaWindow {
+            return [ModelQuotaDetail(id: "fable", label: "Fable", windows: [fableQuotaWindow])]
+        }
+        return []
+    }
+
+    var supplementaryQuotaRowCount: Int {
+        supplementaryQuotas.reduce(0) { $0 + $1.rowCount }
     }
 
     var emailPrefix: String {
@@ -291,6 +328,8 @@ struct Account: Identifiable, Equatable, Codable, Sendable {
             quotaWindows: quotaWindows?.map { $0.agingResetTimer(by: elapsed) },
             fableQuotaWindow: fableQuotaWindow?.agingResetTimer(by: elapsed),
             argonQuotaWindow: argonQuotaWindow?.agingResetTimer(by: elapsed),
+            geminiQuotaDetails: geminiQuotaDetails?.map { $0.agingResetTimers(by: elapsed) },
+            geminiQuotaDescription: geminiQuotaDescription,
             planRenewalDate: planRenewalDate,
             hasError: hasError,
             errorMessage: errorMessage,

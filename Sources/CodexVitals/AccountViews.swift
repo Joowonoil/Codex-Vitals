@@ -47,7 +47,7 @@ private enum PlanRenewalDatePrompt {
         alert.messageText = account.planRenewalDate == nil
             ? "Set Plan Renewal Date"
             : "Edit Plan Renewal Date"
-        alert.informativeText = "Enter the next billing date shown by your Claude subscription."
+        alert.informativeText = "Enter the next billing date shown by your \(account.accountProvider.displayName) subscription."
         alert.alertStyle = .informational
         alert.addButton(withTitle: "Save")
         alert.addButton(withTitle: "Cancel")
@@ -302,7 +302,7 @@ private struct ReorderableAccountRow<Content: View>: View {
 
     private var rowHeight: CGFloat {
         let baseHeight: CGFloat = account.hasDisplayAlias ? 40 : 34
-        return baseHeight + (account.supplementaryQuota != nil ? 22 : 0)
+        return baseHeight + CGFloat(account.supplementaryQuotaRowCount) * 22
     }
 
     private var dragPreview: some View {
@@ -637,7 +637,7 @@ struct AccountCompactRow: View {
     private var exhausted: Bool { account.isWeeklyExhausted }
     private var rowHeight: CGFloat {
         let baseHeight: CGFloat = account.hasDisplayAlias ? 40 : 34
-        return baseHeight + (account.supplementaryQuota != nil ? 22 : 0)
+        return baseHeight + CGFloat(account.supplementaryQuotaRowCount) * 22
     }
     private var canShowSwapControl: Bool {
         showsSwitchControls
@@ -902,16 +902,54 @@ struct AccountCompactRow: View {
                 planCycleText(width: layout.planCycleWidth)
             }
 
-            if let supplementary = account.supplementaryQuota {
-                supplementaryQuotaMetric(supplementary.window, label: supplementary.label, layout: layout, width: width)
+            ForEach(account.supplementaryQuotas) { detail in
+                supplementaryQuotaRows(detail, layout: layout, width: width)
             }
         }
         .frame(width: width, alignment: .trailing)
     }
 
+    @ViewBuilder
+    private func supplementaryQuotaRows(
+        _ detail: ModelQuotaDetail,
+        layout: CompactRowLayout.Metrics,
+        width: CGFloat
+    ) -> some View {
+        if detail.sharesMainQuota || detail.windows.isEmpty {
+            HStack(spacing: 6) {
+                Text(detail.label)
+                    .font(Theme.metadataFont)
+                    .foregroundStyle(Theme.providerText(for: account.accountProvider))
+                Spacer(minLength: 0)
+                if detail.sharesMainQuota {
+                    Image(systemName: "link")
+                        .font(.system(size: 10, weight: .medium))
+                    Text("Gemini")
+                        .font(Theme.metadataFont)
+                } else {
+                    Text("--")
+                        .font(Theme.metricFont)
+                }
+            }
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .frame(width: width, height: 18)
+            .help(detail.tooltip)
+            .accessibilityLabel("\(detail.label): \(detail.tooltip)")
+        } else {
+            ForEach(Array(detail.windows.enumerated()), id: \.offset) { _, window in
+                supplementaryQuotaMetric(
+                    window, label: detail.windows.count > 1 ? "\(detail.label) \(window.label)" : detail.label,
+                    explanation: detail.explanation, layout: layout, width: width
+                )
+            }
+        }
+    }
+
     private func supplementaryQuotaMetric(
         _ window: QuotaWindow,
         label: String,
+        explanation: String?,
         layout: CompactRowLayout.Metrics,
         width: CGFloat
     ) -> some View {
@@ -923,7 +961,8 @@ struct AccountCompactRow: View {
                 provider: account.accountProvider,
                 pct: window.remainingPercent,
                 dimmed: dimmed,
-                width: meterWidth
+                width: meterWidth,
+                explanation: explanation
             )
             ResetTimeBadge(
                 text: window.hasKnownResetTime ? ResetFormatter.compact(seconds: window.resetAfterSeconds) : "--",
@@ -1340,6 +1379,10 @@ private extension AccountCompactRow {
             dimmed: gray,
             width: width
         )
+        .help([
+            "\(label): \(String(format: "%.0f%%", pct)) remaining",
+            account.isGeminiAccount ? account.geminiQuotaDescription : nil
+        ].compactMap { $0 }.joined(separator: "\n"))
     }
 }
 
@@ -1383,6 +1426,7 @@ struct SupplementaryQuotaMeter: View {
     let pct: Double
     let dimmed: Bool
     let width: CGFloat
+    var explanation: String? = nil
 
     var body: some View {
         HStack(spacing: 6) {
@@ -1390,7 +1434,7 @@ struct SupplementaryQuotaMeter: View {
                 .font(Theme.metadataFont)
                 .foregroundStyle(Theme.providerText(for: provider))
                 .lineLimit(1)
-                .frame(width: 34, alignment: .leading)
+                .frame(width: label.count > 6 ? 76 : 42, alignment: .leading)
 
             MeterTrack(
                 pct: pct,
@@ -1408,7 +1452,8 @@ struct SupplementaryQuotaMeter: View {
                 .frame(width: 34, alignment: .trailing)
         }
         .frame(width: width, height: 18)
-        .help("\(label): \(String(format: "%.0f%%", pct)) remaining")
+        .help(["\(label): \(String(format: "%.0f%%", pct)) remaining", explanation]
+            .compactMap { $0 }.joined(separator: "\n"))
     }
 }
 

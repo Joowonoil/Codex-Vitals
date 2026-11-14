@@ -90,6 +90,8 @@ struct GeminiUsageReport: Decodable {
                     }
                 }
                 let buckets: [Bucket]
+                let displayName: String?
+                let description: String?
             }
             let groups: [Group]
         }
@@ -112,8 +114,11 @@ struct GeminiUsageReport: Decodable {
         guard !windows.isEmpty else { throw GeminiUsageError.unavailable }
         let session = windows.first { $0.kind == .fiveHour }
         let weekly = windows.first { $0.kind == .weekly }
-        let argonQuota = buckets.first { $0.id == "gemini-argon-wtu-weekly" }?.quota(now: now)
-        let argon = argonQuota?.kind == .weekly ? argonQuota : nil
+        let details = modelQuotaDetails(groups: groups, now: now)
+        let argon = details.first { $0.id == "argon" }?.windows.first { $0.kind == .weekly }
+        let geminiDescription = groups.first {
+            $0.buckets.contains { ["gemini-5h", "gemini-weekly"].contains($0.id) }
+        }?.description
         return Account(
             id: profile.map { "gemini:\($0.id)" } ?? "gemini:unidentified",
             profileKey: nil,
@@ -128,6 +133,8 @@ struct GeminiUsageReport: Decodable {
             weeklyResetSeconds: weekly?.resetAfterSeconds ?? 0,
             quotaWindows: windows,
             argonQuotaWindow: argon,
+            geminiQuotaDetails: details,
+            geminiQuotaDescription: geminiDescription.map { String($0.prefix(1_000)) },
             planRenewalDate: profile?.planRenewalDate,
             hasError: false,
             errorMessage: nil,
@@ -137,6 +144,56 @@ struct GeminiUsageReport: Decodable {
             providerStatus: "ok",
             quotaReferenceDate: now
         )
+    }
+
+    private func modelQuotaDetails(groups: [Command.Quotas.Group], now: Date) -> [ModelQuotaDetail] {
+        let mainIDs: Set<String> = ["gemini-5h", "gemini-weekly"]
+        let mainGroups = groups.filter { $0.buckets.contains { mainIDs.contains($0.id) } }
+        // Only explicit membership lists establish sharing; plan names and marketing text do not.
+        let sharedMembers = mainGroups.flatMap { group -> [String] in
+            let prefix = "Models within this group:"
+            guard let description = group.description, description.hasPrefix(prefix) else { return [] }
+            return description.dropFirst(prefix.count).split(separator: ",").map {
+                $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            }
+        }
+
+        return ["Argon", "Carbon", "Hydrogen"].compactMap { label in
+            let modelID = label.lowercased()
+            let modelName = "Gemini 4 \(label)"
+            let namedGroups = groups.filter {
+                $0.displayName?.caseInsensitiveCompare(modelName) == .orderedSame
+            }
+            let scoped = groups.flatMap { group in
+                group.buckets.filter { bucket in
+                    !mainIDs.contains(bucket.id) && !bucket.id.hasPrefix("3p-")
+                        && (bucket.id.hasPrefix("gemini-\(modelID)-")
+                            || group.displayName?.caseInsensitiveCompare(modelName) == .orderedSame)
+                }
+            }
+            let activeBuckets = scoped.filter { $0.disabled != true }
+            if !activeBuckets.isEmpty {
+                var durations = Set<Double>()
+                let windows = activeBuckets.compactMap { bucket -> QuotaWindow? in
+                    guard let quota = bucket.quota(now: now),
+                          !bucket.id.hasSuffix("-weekly") || quota.kind == .weekly,
+                          !bucket.id.hasSuffix("-5h") || quota.kind == .fiveHour,
+                          durations.insert(quota.limitSeconds).inserted else { return nil }
+                    return quota
+                }.sorted { $0.limitSeconds < $1.limitSeconds }
+                return ModelQuotaDetail(
+                    id: modelID, label: label, windows: windows,
+                    explanation: namedGroups.first?.description.map { String($0.prefix(1_000)) }
+                )
+            }
+            // Hydrogen already has the main Gemini row, so do not duplicate it.
+            let explicitlyShared = sharedMembers.contains(modelName.lowercased())
+                || namedGroups.contains { $0.buckets.contains { mainIDs.contains($0.id) && $0.disabled != true } }
+            if label != "Hydrogen", scoped.isEmpty, explicitlyShared {
+                return ModelQuotaDetail(id: modelID, label: label, sharesMainQuota: true)
+            }
+            return nil
+        }
     }
 }
 

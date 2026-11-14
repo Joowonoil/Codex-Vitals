@@ -2,6 +2,15 @@
 
 All notable changes to Codex Vitals will be documented here.
 
+## 1.7.1 - 2026-11-14
+
+- Added model-aware Gemini quota details, including Carbon when reported by the account's quota response.
+- Distinguished independent model limits from shared Gemini limits with a link icon and tooltip, without duplicating the remaining balance.
+- Added Gemini model-group tooltips to clarify the allowance used by Hydrogen and Flash when that metadata is available.
+- Kept unsupported models hidden and missing quota values unknown instead of displaying full or unlimited usage.
+- Preserved model-specific reset times and confirmed-reset notifications without duplicate shared-quota alerts.
+- Covered Carbon's separate, shared, and unavailable states with fixture tests and sanitized UI previews; a live Ultra account remains unverified.
+
 ## 1.7.0 - 2026-11-14
 
 - Added experimental Gemini usage monitoring for Antigravity CLI (`agy`) on macOS, with separate Gemini 5-hour, weekly, and Argon weekly limits when available.

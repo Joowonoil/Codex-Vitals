@@ -13,7 +13,7 @@ final class GeminiUsageTests: XCTestCase {
         XCTAssertEqual(account.usageWindows.map(\.label), ["5h", "1w"])
         XCTAssertEqual(account.usageWindows.map(\.remainingPercent), [80, 65])
         XCTAssertEqual(account.argonQuotaWindow?.remainingPercent, 42)
-        XCTAssertEqual(account.supplementaryQuota?.label, "Argon")
+        XCTAssertEqual(account.supplementaryQuotas.first?.label, "Argon")
         XCTAssertNil(account.fableQuotaWindow)
         XCTAssertTrue(account.isUsableForCodex)
         XCTAssertFalse(account.canSwitchProviderAccount)
@@ -36,7 +36,7 @@ final class GeminiUsageTests: XCTestCase {
 
         XCTAssertNil(account.fiveHourQuotaWindow)
         XCTAssertEqual(account.usageWindows.map(\.label), ["1w"])
-        XCTAssertNil(account.supplementaryQuota)
+        XCTAssertTrue(account.supplementaryQuotas.isEmpty)
     }
 
     func testMismatchedBucketCadenceCannotCreateDuplicateWindows() throws {
@@ -142,6 +142,7 @@ final class GeminiUsageTests: XCTestCase {
         previous.argonQuotaWindow = QuotaWindow(
             limitSeconds: QuotaWindow.weeklySeconds, remainingPercent: 0, resetAfterSeconds: 100
         )
+        previous.geminiQuotaDetails = nil
         var current = try decodedAccount(argon: 1)
         let fetchedAt = now.addingTimeInterval(200)
         let events = UsageResetDetector.detect(
@@ -187,13 +188,16 @@ final class GeminiUsageTests: XCTestCase {
             if let fraction { object["remaining_fraction"] = fraction }
             return object
         }
-        return ["status": "SUCCESS", "command": ["name": "usage", "data": ["groups": [
+        var groups: [[String: Any]] = [
             ["name": "Gemini", "buckets": [
                 bucket("gemini-weekly", "weekly", weekly), bucket("gemini-5h", "5h", fiveHour),
             ]],
             ["name": "Claude/GPT", "buckets": [bucket("3p-weekly", "weekly", 0)]],
-            ["name": "Argon", "buckets": [bucket("gemini-argon-wtu-weekly", "weekly", argon)]],
-        ]]]]
+        ]
+        if let argon {
+            groups.append(["name": "Argon", "buckets": [bucket("gemini-argon-wtu-weekly", "weekly", argon)]])
+        }
+        return ["status": "SUCCESS", "command": ["name": "usage", "data": ["groups": groups]]]
     }
 
     private func reportFile() throws -> URL {

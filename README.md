@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Joowonoil/Codex-Vitals/releases/download/v1.7.0/CodexVitals-1.7.0.dmg"><strong>Download for macOS</strong></a>
+  <a href="https://github.com/Joowonoil/Codex-Vitals/releases/download/v1.7.1/CodexVitals-1.7.1.dmg"><strong>Download for macOS</strong></a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
   <a href="https://github.com/Joowonoil/Codex-Vitals/releases/download/windows-v1.0.0/CodexVitals-Windows-1.0.0-Setup.exe"><strong>Download for Windows</strong></a>
 </p>
@@ -36,10 +36,10 @@
 - Switch the active account used by Codex CLI and the desktop app with one click
 - View Claude 5-hour and 7-day limits, available Fable 5 weekly usage, detected plans, workspace labels, and optional plan renewal dates on macOS
 - Reorder, group, reconnect, hide, and explicitly switch saved Claude Code accounts independently of Codex
-- Monitor Gemini 5-hour and weekly limits plus a separate Argon weekly row when available; save and manage Gemini accounts independently on macOS
+- Monitor Gemini 5-hour and weekly limits plus model-specific Argon and Carbon details when reported; save and manage Gemini accounts independently on macOS
 - Enable Launch at Login from the settings panel
 - Tune automatic refresh cadence from the settings panel
-- Enable grouped notifications on macOS after automatic refresh confirms that Codex, Claude, Gemini, or Argon usage has reset
+- Enable grouped notifications on macOS after automatic refresh confirms that Codex, Claude, Gemini, or a separate Gemini model allowance has reset
 - Check for signed app updates and enable automatic installation
 - Identify invalid or deactivated accounts
 
@@ -56,7 +56,7 @@
 - **One-Click Switching** — Apply a saved account to Codex CLI and the supported desktop app
 - **Claude Accounts on macOS** — Add, label, group, reorder, monitor 5-hour, 7-day, and available Fable 5 weekly limits, reconnect, hide, and explicitly switch Claude Code accounts inside Codex Vitals
 - **Claude Plan Context** — Detect available Claude plan metadata and optionally show a locally entered plan renewal date
-- **Gemini Accounts on macOS (Experimental)** — Import the active `agy` account, show available Gemini and Argon quotas, save multiple accounts, reconnect, label, reorder, hide, and manually switch between them
+- **Gemini Accounts on macOS (Experimental)** — Import the active `agy` account, show available Gemini, Argon, and Carbon quota details, save multiple accounts, reconnect, label, reorder, hide, and manually switch between them
 - **Passive Auth Mirroring** — Codex-managed token rotations are mirrored back into saved local profiles
 - **Local-First** — All data stays on your machine; no cloud sync
 - **Secure Token Storage** — Saved Claude and Gemini credentials use the macOS Keychain; sensitive Codex files use owner-only permissions
@@ -234,7 +234,9 @@ On macOS, Codex Vitals imports the currently active Claude Code account, stores 
 
 ### How does Gemini support work?
 
-On macOS, the experimental integration uses the consumer account signed into Antigravity CLI (`agy`). It displays only the Gemini 5-hour and weekly quotas and the separate Argon weekly quota when Google reports them; Antigravity's third-party-model quotas are not shown. Saved accounts support aliases, workspace labels, renewal dates, ordering, reconnect, and explicit manual switching independently of Codex and Claude. Existing running Antigravity sessions must be closed before authentication changes. Enterprise auth is not supported. This integration is unofficial and subject to the Google policy warning above; it is not included in the Windows build.
+On macOS, the experimental integration uses the consumer account signed into Antigravity CLI (`agy`). The main Gemini row displays its 5-hour and weekly limits, with a tooltip identifying the models that share them when Google supplies that metadata. Separate model quotas, including Argon and Carbon, receive their own detail rows when reported. Models explicitly listed as sharing the main Gemini allowance display a link icon and `Gemini` instead of duplicating that balance. Hydrogen does not receive a duplicate row when it is included in the main allowance. Unsupported models are hidden, and a missing reported quota value is shown as `--`, not full or unlimited. Antigravity's third-party-model quotas are not shown.
+
+Saved accounts support aliases, workspace labels, renewal dates, ordering, reconnect, and explicit manual switching independently of Codex and Claude. Existing running Antigravity sessions must be closed before authentication changes. Enterprise auth is not supported. Pro quota reads have been verified live; Carbon's separate, shared, and missing-value states are covered by fixture tests and sanitized UI previews, but a live Ultra account has not been verified. This integration is unofficial and subject to the Google policy warning above; it is not included in the Windows build.
 
 ## Contributing
 

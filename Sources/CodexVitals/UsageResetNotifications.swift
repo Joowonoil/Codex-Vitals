@@ -86,8 +86,16 @@ enum UsageResetDetector {
         if let fable = account.fableQuotaWindow {
             result.append((key: "fable", label: "Fable 5", window: fable))
         }
-        if let argon = account.argonQuotaWindow {
-            result.append((key: "argon", label: "Argon", window: argon))
+        if account.isGeminiAccount {
+            for detail in account.supplementaryQuotas where !detail.sharesMainQuota {
+                for window in detail.windows {
+                    let duration = Int(window.limitSeconds.rounded())
+                    let key = detail.id == "argon" && window.kind == .weekly
+                        ? "argon" : "gemini:\(detail.id):\(duration)"
+                    let label = detail.windows.count > 1 ? "\(detail.label) \(window.label)" : detail.label
+                    result.append((key: key, label: label, window: window))
+                }
+            }
         }
         return result
     }

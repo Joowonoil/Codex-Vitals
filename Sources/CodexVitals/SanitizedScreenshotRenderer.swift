@@ -17,9 +17,11 @@ enum SanitizedScreenshotRenderer {
 
         let viewModel = UsageViewModel(resetNotificationService: ScreenshotNotificationService())
         configure(viewModel)
-        let rootView = SanitizedProductScreenshot(viewModel: viewModel, icon: icon)
+        let extraRows = viewModel.accounts.filter(\.isGeminiAccount)
+            .reduce(0) { $0 + max(0, $1.supplementaryQuotaRowCount - 1) }
+        let size = NSSize(width: 652, height: 465 + CGFloat(extraRows) * 22)
+        let rootView = SanitizedProductScreenshot(viewModel: viewModel, icon: icon, height: size.height)
             .environment(\.colorScheme, .light)
-        let size = NSSize(width: 652, height: 465)
         let hostingView = NSHostingView(rootView: rootView)
         hostingView.frame = NSRect(origin: .zero, size: size)
 
@@ -63,6 +65,7 @@ enum SanitizedScreenshotRenderer {
 
     private static func configure(_ viewModel: UsageViewModel) {
         let codexKeys = ["codex-primary", "codex-research", "codex-team"]
+        let geminiCase = ProcessInfo.processInfo.environment["CODEX_VITALS_SCREENSHOT_GEMINI_CASE"] ?? "pro"
         viewModel.accounts = [
             account(
                 id: "alex@example.com|sample-1",
@@ -143,7 +146,7 @@ enum SanitizedScreenshotRenderer {
                 email: "gemini@example.com",
                 alias: "Gemini Main",
                 workspace: "Gemini",
-                plan: "Pro",
+                plan: geminiCase == "pro" ? "Pro" : "Ultra",
                 fiveHour: 83,
                 weekly: 67,
                 fiveHourReset: 9_600,
@@ -154,6 +157,29 @@ enum SanitizedScreenshotRenderer {
                 argon: 42
             ),
         ]
+        if let index = viewModel.accounts.firstIndex(where: \.isGeminiAccount) {
+            viewModel.accounts[index].geminiQuotaDescription = "Models within this group: Gemini 4 Hydrogen, Gemini 3.8 Flash"
+            let sharedArgon = ModelQuotaDetail(id: "argon", label: "Argon", sharesMainQuota: true)
+            switch geminiCase {
+            case "carbon-separate":
+                viewModel.accounts[index].geminiQuotaDetails = [sharedArgon, ModelQuotaDetail(
+                    id: "carbon", label: "Carbon", windows: [
+                        QuotaWindow(limitSeconds: QuotaWindow.fiveHourSeconds, remainingPercent: 79, resetAfterSeconds: 9_600),
+                        QuotaWindow(limitSeconds: QuotaWindow.weeklySeconds, remainingPercent: 54, resetAfterSeconds: 302_400),
+                    ]
+                )]
+            case "carbon-shared":
+                viewModel.accounts[index].geminiQuotaDetails = [sharedArgon,
+                    ModelQuotaDetail(id: "carbon", label: "Carbon", sharesMainQuota: true),
+                ]
+                viewModel.accounts[index].geminiQuotaDescription = "Models within this group: Gemini 4 Hydrogen, Gemini 3.8 Flash, Gemini 4 Argon, Gemini 4 Carbon"
+            case "carbon-unknown":
+                viewModel.accounts[index].geminiQuotaDetails = [sharedArgon,
+                    ModelQuotaDetail(id: "carbon", label: "Carbon"),
+                ]
+            default: break
+            }
+        }
         viewModel.codexLoginStatus = CodexLoginStatus(
             accountIDs: [],
             sourceProfileKeys: Set(codexKeys),
@@ -256,6 +282,7 @@ private final class ScreenshotNotificationService: UsageResetNotifying {
 private struct SanitizedProductScreenshot: View {
     @ObservedObject var viewModel: UsageViewModel
     let icon: NSImage
+    let height: CGFloat
 
     var body: some View {
         VStack(spacing: 0) {
@@ -274,7 +301,7 @@ private struct SanitizedProductScreenshot: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 7)
         }
-        .frame(width: 652, height: 465)
+        .frame(width: 652, height: height)
         .background(Theme.appBackground)
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay {
