@@ -2,6 +2,15 @@
 
 All notable changes to Codex Vitals will be documented here.
 
+## 1.7.0 - 2026-11-14
+
+- Added experimental Gemini usage monitoring for Antigravity CLI (`agy`) on macOS, with separate Gemini 5-hour, weekly, and Argon weekly limits when available.
+- Added saved Gemini accounts, explicit manual switching, reconnect, aliases, detected plans, workspace labels, renewal dates, and drag ordering.
+- Kept Gemini credentials in the macOS Keychain and queried usage directly without launching a model or a CLI process on each refresh.
+- Protected running Antigravity sessions during account changes, isolated per-account cached readings, and added reset notifications after confirmed quota recovery.
+- Preserved unknown reset times instead of displaying misleading dates, and kept account-specific reset timestamps stable during partial refreshes.
+- Updated the sanitized product screenshot. Windows remains at 1.0.0 with Codex support only.
+
 ## 1.6.4 - 2026-09-20
 
 - Fixed refreshes getting stuck when macOS Keychain does not respond.

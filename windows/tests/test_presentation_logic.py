@@ -59,19 +59,19 @@ def make_snapshot(*, remaining: float, reset_hour: int, blocked: bool = False) -
 class PresentationLogicTests(unittest.TestCase):
     def test_is_active_account_ignores_shared_provider_id(self) -> None:
         identity = AuthBackedIdentity(
-            email="bruno@relablo.com",
+            email="bruno@example.com",
             auth_subject="auth0|bruno",
             plan="team",
             provider_account_id="shared-provider",
         )
         bruno = make_account(
-            email="bruno@relablo.com",
+            email="bruno@example.com",
             auth_subject="auth0|bruno",
             provider_account_id="shared-provider",
             path_suffix="bruno",
         )
         charles = make_account(
-            email="charles@relablo.com",
+            email="charles@example.com",
             auth_subject="auth0|charles",
             provider_account_id="shared-provider",
             path_suffix="charles",

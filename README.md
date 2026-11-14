@@ -1,4 +1,4 @@
-# Codex Vitals: Codex and Claude account usage from the menu bar
+# Codex Vitals: Codex, Claude, and Gemini usage from the menu bar
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-macOS%2013+-000000?logo=apple" alt="macOS 13+">
@@ -11,11 +11,11 @@
 </p>
 
 <p align="center">
-  An unofficial, local-first app for monitoring Codex and Claude usage with explicit manual account switching.
+  An unofficial, local-first app for monitoring Codex, Claude, and Gemini usage with explicit manual account switching.
 </p>
 
 <p align="center">
-  <a href="https://github.com/Joowonoil/Codex-Vitals/releases/download/v1.6.4/CodexVitals-1.6.4.dmg"><strong>Download for macOS</strong></a>
+  <a href="https://github.com/Joowonoil/Codex-Vitals/releases/download/v1.7.0/CodexVitals-1.7.0.dmg"><strong>Download for macOS</strong></a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
   <a href="https://github.com/Joowonoil/Codex-Vitals/releases/download/windows-v1.0.0/CodexVitals-Windows-1.0.0-Setup.exe"><strong>Download for Windows</strong></a>
 </p>
@@ -26,7 +26,7 @@
 
 ## Overview
 
-**Codex Vitals** helps you monitor OpenAI Codex usage, reset windows, account state, and workspaces from the macOS menu bar or Windows system tray. On macOS it also manages Claude Code accounts natively. Codex and Claude remain independently signed in and switch independently.
+**Codex Vitals** helps you monitor OpenAI Codex usage, reset windows, account state, and workspaces from the macOS menu bar or Windows system tray. On macOS it also manages Claude Code accounts and provides experimental Gemini support through an installed Antigravity CLI (`agy`). Each provider remains independently signed in and switches independently. Windows currently supports Codex only.
 
 - View best-effort Codex quota and usage across all your accounts
 - Group accounts by workspace/team
@@ -36,13 +36,16 @@
 - Switch the active account used by Codex CLI and the desktop app with one click
 - View Claude 5-hour and 7-day limits, available Fable 5 weekly usage, detected plans, workspace labels, and optional plan renewal dates on macOS
 - Reorder, group, reconnect, hide, and explicitly switch saved Claude Code accounts independently of Codex
+- Monitor Gemini 5-hour and weekly limits plus a separate Argon weekly row when available; save and manage Gemini accounts independently on macOS
 - Enable Launch at Login from the settings panel
 - Tune automatic refresh cadence from the settings panel
-- Enable grouped notifications on macOS after automatic refresh confirms that Codex or Claude usage has reset
+- Enable grouped notifications on macOS after automatic refresh confirms that Codex, Claude, Gemini, or Argon usage has reset
 - Check for signed app updates and enable automatic installation
 - Identify invalid or deactivated accounts
 
-> **Disclaimer:** Codex Vitals is not affiliated with OpenAI or Anthropic. It does not change provider limits, share accounts, or automate account cycling. It only helps you view local usage state and manually switch between accounts you control.
+> **Disclaimer:** Codex Vitals is not affiliated with OpenAI, Anthropic, or Google. It does not change provider limits, share accounts, or automate account cycling. It only helps you view local usage state and manually switch between accounts you control.
+
+> **Experimental Gemini integration:** Google does not officially support this integration. Its [Antigravity FAQ](https://antigravity.google/docs/faq) restricts third-party access, wrapping `agy` in third-party applications, and automated account rotation under consumer plans, and warns that third-party access can lead to suspension or termination. Manual switching and quota-only reads are not a guarantee of policy compliance. Review Google's current terms before enabling Gemini tracking; it can be disabled in Settings.
 
 ## Features
 
@@ -53,13 +56,14 @@
 - **One-Click Switching** — Apply a saved account to Codex CLI and the supported desktop app
 - **Claude Accounts on macOS** — Add, label, group, reorder, monitor 5-hour, 7-day, and available Fable 5 weekly limits, reconnect, hide, and explicitly switch Claude Code accounts inside Codex Vitals
 - **Claude Plan Context** — Detect available Claude plan metadata and optionally show a locally entered plan renewal date
+- **Gemini Accounts on macOS (Experimental)** — Import the active `agy` account, show available Gemini and Argon quotas, save multiple accounts, reconnect, label, reorder, hide, and manually switch between them
 - **Passive Auth Mirroring** — Codex-managed token rotations are mirrored back into saved local profiles
 - **Local-First** — All data stays on your machine; no cloud sync
-- **Secure Token Storage** — Saved Claude credentials use the macOS Keychain; sensitive Codex files use owner-only permissions
+- **Secure Token Storage** — Saved Claude and Gemini credentials use the macOS Keychain; sensitive Codex files use owner-only permissions
 - **Settings Panel** — Manage Launch at Login, usage refresh, reset notifications, and application updates inside the menu bar popover
 - **Signed Automatic Updates** — Sparkle on macOS and WinSparkle on direct Windows builds verify EdDSA signatures before installation
 - **Network-Friendly Refresh** — Automatic usage refresh defaults to 10 minutes, Claude requests use a 15-minute minimum and honor Anthropic backoff, and metadata is cached
-- **Usage or Manual Ordering** — Keep the usage-based recommendation order or drag rows into a persistent manual order, independently within Codex and Claude
+- **Usage or Manual Ordering** — Keep the usage-based recommendation order or drag rows into a persistent manual order, independently within each provider
 
 ## Check, Switch, and Continue
 
@@ -78,7 +82,7 @@ Choose **Usage** in Settings to keep the best account to use now near the top, o
 
 - **Smart score** — Uses the lowest remaining balance among the quota windows currently reported by OpenAI; the account with the highest bottlenecked balance wins.
 - **Reset Soon strip** — In Usage order, accounts with useful balance whose weekly window resets in less than 24 hours appear in a dedicated top section.
-- **Manual order** — Drag rows within Codex or Claude to persist a provider-specific order. With workspace grouping enabled, rows stay inside their current workspace.
+- **Manual order** — Drag rows within a provider to persist a provider-specific order. With workspace grouping enabled, rows stay inside their current workspace.
 - **Exhausted accounts** — Sorted by who resets first, so you know which one will be usable again soonest.
 - **Free reset group** — Free-plan accounts waiting for session reset are grouped separately so daily-use paid/workspace accounts stay easier to scan.
 
@@ -88,6 +92,7 @@ Choose **Usage** in Settings to keep the best account to use now near the top, o
 - **Windows:** 64-bit Windows 10 or 11; Codex Desktop for desktop-session switching
 - A Codex CLI installation and accounts you control
 - **Optional Claude support on macOS:** Claude Code installed and available to your user account
+- **Optional experimental Gemini support on macOS:** Antigravity CLI (`agy`) installed with a consumer Google account; version 1.5.0 or newer for interactive add and reconnect
 
 ## Installation
 
@@ -96,6 +101,8 @@ Choose **Usage** in Settings to keep the best account to use now near the top, o
 Download the latest `.pkg` from [Releases](../../releases), double-click to run the installer, and Codex Vitals will be installed to `/Applications`.
 
 To add a Claude account, open Codex Vitals, choose the account-add button, and select **Add Claude Account**. The app starts the official `claude auth login` browser flow, then stores that account's saved credential in its own macOS Keychain service. Switching remains a manual action; Codex Vitals does not automatically rotate accounts.
+
+For experimental Gemini support, the app imports the currently signed-in consumer `agy` account. **Add Gemini Account** and Reconnect start the installed CLI's `agy acp --login` browser flow. Close running `agy` sessions and Antigravity before adding, reconnecting, or switching Gemini accounts; Codex Vitals refuses these changes rather than terminating your work. Gemini's tracking toggle is in Settings. An unavailable reset time is shown as `--` rather than being guessed. A second real-account login and switch still need broader field validation; this integration is best effort.
 
 ### Windows
 
@@ -147,10 +154,13 @@ Codex Vitals is local-first and never syncs tokens or exposes a remote service.
 | `~/Library/Application Support/CodexVitals/backups/<timestamp>-remove-account/` | Backups before removal |
 | macOS Keychain: `com.ramterstudio.CodexVitals.Claude` | Saved Claude credentials |
 | `~/Library/Application Support/CodexVitals/claude-accounts.json` | Non-secret Claude aliases, ordering, workspace labels, visibility, plan metadata, and optional renewal dates |
+| macOS Keychain: `app.codexvitals.menubar.Gemini` | Saved Gemini credentials |
+| `~/Library/Application Support/CodexVitals/gemini-accounts.json` | Gemini email identities, aliases, ordering, workspace labels, visibility, plan metadata, and optional renewal dates; no tokens |
+| macOS Keychain: service `gemini`, account `antigravity` | Active Antigravity consumer credential; only this provider's credential changes during a manual Gemini switch |
 | `~/.claude.json` and Keychain: `Claude Code-credentials` | Active Claude Code account state; Codex Vitals changes only the active account metadata and credential during a manual switch |
 | `%APPDATA%\CodexVitals\` | Windows accounts, snapshots, settings, and local backups |
 
-All sensitive files are written with `0600` permissions. Codex profile removal creates a local backup before deleting profile data. Removing an inactive Claude profile deletes its saved app credential and metadata; removing the currently active Claude profile only hides it from Codex Vitals and leaves Claude Code signed in. Re-adding the active account restores it to the list.
+All sensitive files are written with `0600` permissions. Codex profile removal creates a local backup before deleting profile data. Removing an inactive Claude or Gemini profile deletes its saved app credential and metadata; removing the currently active profile only hides it from Codex Vitals and leaves its CLI signed in. Re-adding the active account restores it to the list. Local metadata and usage snapshots contain email addresses, aliases, and usage information: do not publish those files even though they contain no tokens.
 
 ### Network Calls
 
@@ -169,9 +179,17 @@ For Claude support on macOS, the app uses the official Claude Code CLI for inter
 - `https://api.anthropic.com/api/oauth/usage`
 - `https://platform.claude.com/v1/oauth/token`
 
+For experimental Gemini support, the app reads Antigravity's consumer credential from the Keychain, queries Google's quota endpoints directly, and refreshes expiring Google access tokens as needed. OAuth client metadata is resolved locally from the installed `agy` executable rather than bundled as a secret. Interactive login runs only after an explicit Add or Reconnect action; automatic usage refresh does not invoke `agy -p` or send a model prompt.
+
+- `https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist`
+- `https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary`
+- `https://oauth2.googleapis.com/token`
+
 These are not official public APIs and may change without notice.
 
 Automatic usage refresh defaults to 10 minutes. Account metadata is cached for 6 hours during automatic refreshes. Manual refresh requests fresh Codex usage and metadata immediately; Claude usage remains limited to once per account every 15 minutes and honors Anthropic `Retry-After` responses while retaining the last successful reading.
+
+Gemini follows the selected refresh cycle, queries at most four saved accounts concurrently, and backs off after failures. Manual refresh can retry a transient failure but cannot bypass Google's server rate limits. Cached data does not trigger a reset notification.
 
 Application update checks are separate from account refreshes. Sparkle and WinSparkle check at most once every 24 hours by default, and automatic checks can be changed in Settings. Microsoft Store builds leave updates to the Store.
 
@@ -181,6 +199,7 @@ Application update checks are separate from account refreshes. Sparkle and WinSp
 - OAuth callback server binds only to `localhost:1455` and closes immediately after login
 - Claude browser login launches only the fixed official `claude auth login --claudeai` command without a shell
 - Claude credentials are never placed in process arguments, metadata files, snapshots, or logs
+- Gemini credentials stay in the Keychain; saved metadata, usage snapshots, screenshots, logs, and process arguments do not contain them
 - See [SECURITY.md](SECURITY.md) for the full threat model
 
 ## FAQ
@@ -212,6 +231,10 @@ No. Codex Vitals is local-first and does not sync tokens, account data, or usage
 ### How does Claude support work?
 
 On macOS, Codex Vitals imports the currently active Claude Code account, stores saved account credentials in an app-specific Keychain service, and queries best-effort 5-hour and 7-day usage. When Anthropic reports a scoped Fable 5 limit, the app also shows its weekly remaining usage and reset time in a separate detail row. Available account metadata is used to display the Claude plan, while an optional plan renewal date can be entered locally. Accounts can be grouped into named workspaces and reordered. Adding or reconnecting uses Claude Code's official browser login. Switching is explicit and transactional, affects Claude Code only, and preserves unrelated `~/.claude.json` settings. Claude support is not yet included in the Windows build.
+
+### How does Gemini support work?
+
+On macOS, the experimental integration uses the consumer account signed into Antigravity CLI (`agy`). It displays only the Gemini 5-hour and weekly quotas and the separate Argon weekly quota when Google reports them; Antigravity's third-party-model quotas are not shown. Saved accounts support aliases, workspace labels, renewal dates, ordering, reconnect, and explicit manual switching independently of Codex and Claude. Existing running Antigravity sessions must be closed before authentication changes. Enterprise auth is not supported. This integration is unofficial and subject to the Google policy warning above; it is not included in the Windows build.
 
 ## Contributing
 

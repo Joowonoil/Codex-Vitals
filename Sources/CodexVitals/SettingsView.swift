@@ -66,6 +66,17 @@ struct SettingsView: View {
     private var generalSettings: some View {
         VStack(spacing: 0) {
             settingsRow {
+                Toggle(isOn: $viewModel.geminiTrackingEnabled) {
+                    settingsLabel("Gemini (agy)", systemImage: "sparkle")
+                }
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                .tint(Theme.brandAccent)
+            }
+
+            settingsDivider
+
+            settingsRow {
                 Toggle(isOn: Binding(
                     get: { launchAtLogin.isEnabled },
                     set: { launchAtLogin.setEnabled($0) }
@@ -147,13 +158,16 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var statusMessages: some View {
-        if launchStatusMessage != nil || viewModel.resetNotificationStatusMessage != nil {
+        if launchStatusMessage != nil || viewModel.resetNotificationStatusMessage != nil || viewModel.geminiStatusMessage != nil {
             VStack(alignment: .leading, spacing: 4) {
                 if let launchStatusMessage {
                     Text(launchStatusMessage)
                 }
                 if let resetNotificationStatusMessage = viewModel.resetNotificationStatusMessage {
                     Text(resetNotificationStatusMessage)
+                }
+                if let geminiStatusMessage = viewModel.geminiStatusMessage {
+                    Text(geminiStatusMessage)
                 }
             }
             .font(.system(size: 10.5, weight: .medium))

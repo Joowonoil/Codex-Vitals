@@ -2,7 +2,7 @@
 
 ## Threat Model
 
-Codex Vitals is a local-only macOS menu bar and Windows system tray utility. Its main sensitive assets are the user's Codex/OpenAI auth data and saved Claude Code OAuth credentials.
+Codex Vitals is a local-only macOS menu bar and Windows system tray utility. Its main sensitive assets are the user's Codex/OpenAI auth data and saved Claude Code and Gemini/Antigravity OAuth credentials.
 
 Codex Vitals assumes:
 
@@ -25,9 +25,19 @@ Interactive add and reconnect actions invoke the installed Claude Code executabl
 
 A manual Claude switch snapshots the current state in memory, mirrors the outgoing account into the app Keychain, creates a short-lived Keychain safety item, composes the target credential with an allowlist of current machine-wide shared fields, updates Claude Code's active Keychain item, and replaces only `oauthAccount` in `~/.claude.json`. The app verifies both destinations. Any failure restores the original active credential and exact original config bytes; the next launch also detects and repairs an interrupted switch before reading usage. If `~/.claude/.credentials.json` already exists, it is rewritten for Claude Code hot reload; Codex Vitals never creates that plaintext file.
 
+## Experimental Gemini Integration
+
+Saved Gemini consumer credentials use the app-specific Keychain service `app.codexvitals.menubar.Gemini`. The active Antigravity credential uses service `gemini`, account `antigravity`. `gemini-accounts.json` contains email identities, aliases, ordering, visibility, workspace labels, plan metadata, and optional renewal dates, but no tokens. Metadata and usage snapshots still contain personal information and must not be published.
+
+Add and Reconnect invoke only the installed CLI's fixed `agy acp --login` flow, without a shell or credential arguments. Usage refresh calls Google directly and does not launch a model or use `agy -p`. Expiring Google access tokens may be refreshed; OAuth client metadata is resolved from the installed CLI, not embedded in the repository. Tokens are not written to metadata, snapshots, logs, or screenshots.
+
+Manual switching verifies the selected saved identity, preserves the outgoing credential, changes only the native Antigravity Keychain item, and verifies the result or attempts rollback. Running `agy` or Antigravity sessions block add, reconnect, and switch operations. Unlike the Claude interrupted-switch recovery mechanism, Gemini rollback is in-process only; an app or machine crash during a switch is not transactionally recovered on the next launch. No account rotation is automated. Hiding the active profile does not sign out of Antigravity.
+
+Google's [Antigravity FAQ](https://antigravity.google/docs/faq) restricts third-party access and consumer-plan wrappers/account rotation, and warns of account suspension or termination. This experimental integration is not officially supported by Google. Native quota reads or explicit manual switching do not establish that an integration complies with provider terms.
+
 ## Network
 
-Codex Vitals calls best-effort ChatGPT/Codex and Anthropic OAuth usage endpoints directly from the local app. Expiring inactive Claude accounts may use Anthropic's OAuth token endpoint. It does not sync tokens, share data with a third-party service, or run external automation hooks.
+Codex Vitals calls best-effort ChatGPT/Codex, Anthropic OAuth, and Google Antigravity usage endpoints directly from the local app. Expiring inactive Claude accounts may use Anthropic's OAuth token endpoint; Gemini accounts may use Google's OAuth token endpoint. Credentials are sent only to the corresponding provider for authentication and quota access, not to RamterStudio or an analytics service. The app does not sync tokens or run external automation hooks.
 
 The temporary OAuth callback listener binds to localhost during login capture and closes after success, cancellation, timeout, or app termination.
 

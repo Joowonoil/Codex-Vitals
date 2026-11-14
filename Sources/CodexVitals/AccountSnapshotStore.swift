@@ -26,8 +26,7 @@ enum AccountSnapshotStore {
         now: Date
     ) -> (accounts: [Account], lastRefresh: Date?) {
         guard let lastRefresh else { return (accounts, nil) }
-        let elapsed = max(0, now.timeIntervalSince(lastRefresh))
-        return (accounts.map { $0.agingResetTimers(by: elapsed) }, now)
+        return (accounts.map { $0.rebased(to: now, fallbackReference: lastRefresh) }, now)
     }
 
     static func save(accounts: [Account], lastRefresh: Date?) {

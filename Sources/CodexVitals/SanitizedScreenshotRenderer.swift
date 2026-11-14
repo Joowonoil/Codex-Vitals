@@ -7,7 +7,8 @@ import UserNotifications
 enum SanitizedScreenshotRenderer {
     static func render() throws {
         let repository = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-        let output = repository.appendingPathComponent("docs/screenshot.png")
+        let output = ProcessInfo.processInfo.environment["CODEX_VITALS_SCREENSHOT_PATH"]
+            .map { URL(fileURLWithPath: $0) } ?? repository.appendingPathComponent("docs/screenshot.png")
         guard let icon = NSImage(
             contentsOf: repository.appendingPathComponent("Support/AppIcon-1024.png")
         ) else {
@@ -18,7 +19,7 @@ enum SanitizedScreenshotRenderer {
         configure(viewModel)
         let rootView = SanitizedProductScreenshot(viewModel: viewModel, icon: icon)
             .environment(\.colorScheme, .light)
-        let size = NSSize(width: 652, height: 360)
+        let size = NSSize(width: 652, height: 465)
         let hostingView = NSHostingView(rootView: rootView)
         hostingView.frame = NSRect(origin: .zero, size: size)
 
@@ -136,6 +137,22 @@ enum SanitizedScreenshotRenderer {
                 provider: .claude,
                 providerProfileID: "claude-sample-2"
             ),
+            account(
+                id: "gemini:agy-current",
+                profileKey: nil,
+                email: "gemini@example.com",
+                alias: "Gemini Main",
+                workspace: "Gemini",
+                plan: "Pro",
+                fiveHour: 83,
+                weekly: 67,
+                fiveHourReset: 9_600,
+                weeklyReset: 302_400,
+                provider: .gemini,
+                providerProfileID: "gemini-sample-1",
+                providerIsActive: true,
+                argon: 42
+            ),
         ]
         viewModel.codexLoginStatus = CodexLoginStatus(
             accountIDs: [],
@@ -163,6 +180,7 @@ enum SanitizedScreenshotRenderer {
         providerProfileID: String? = nil,
         providerIsActive: Bool = false,
         fable: Double? = nil,
+        argon: Double? = nil,
         planDaysRemaining: Int? = nil,
         singleWindowSeconds: Double? = nil
     ) -> Account {
@@ -209,6 +227,13 @@ enum SanitizedScreenshotRenderer {
                     resetAfterSeconds: 388_800
                 )
             },
+            argonQuotaWindow: argon.map {
+                QuotaWindow(
+                    limitSeconds: QuotaWindow.weeklySeconds,
+                    remainingPercent: $0,
+                    resetAfterSeconds: 302_400
+                )
+            },
             planRenewalDate: planDaysRemaining.flatMap {
                 Calendar.current.date(byAdding: .day, value: $0, to: Date())
             },
@@ -249,7 +274,7 @@ private struct SanitizedProductScreenshot: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 7)
         }
-        .frame(width: 652, height: 360)
+        .frame(width: 652, height: 465)
         .background(Theme.appBackground)
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay {

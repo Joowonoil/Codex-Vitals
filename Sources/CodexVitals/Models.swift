@@ -4,11 +4,13 @@ import SwiftUI
 enum AccountProvider: String, Codable, CaseIterable, Sendable {
     case codex
     case claude
+    case gemini
 
     var displayName: String {
         switch self {
         case .codex: return "Codex"
         case .claude: return "Claude"
+        case .gemini: return "Gemini"
         }
     }
 }
@@ -28,12 +30,16 @@ struct QuotaWindow: Equatable, Codable, Sendable {
     let limitSeconds: Double
     let remainingPercent: Double
     let resetAfterSeconds: Double
+    let resetTimeKnown: Bool?
 
-    init(limitSeconds: Double, remainingPercent: Double, resetAfterSeconds: Double) {
+    init(limitSeconds: Double, remainingPercent: Double, resetAfterSeconds: Double, resetTimeKnown: Bool? = nil) {
         self.limitSeconds = limitSeconds
         self.remainingPercent = min(100, max(0, remainingPercent))
         self.resetAfterSeconds = max(0, resetAfterSeconds)
+        self.resetTimeKnown = resetTimeKnown
     }
+
+    var hasKnownResetTime: Bool { resetTimeKnown ?? true }
 
     var kind: Kind {
         switch Int(limitSeconds.rounded()) {
@@ -92,6 +98,7 @@ struct Account: Identifiable, Equatable, Codable, Sendable {
     let weeklyResetSeconds: Double
     var quotaWindows: [QuotaWindow]? = nil
     var fableQuotaWindow: QuotaWindow? = nil
+    var argonQuotaWindow: QuotaWindow? = nil
     var planRenewalDate: Date?
     let hasError: Bool
     let errorMessage: String?
@@ -100,6 +107,7 @@ struct Account: Identifiable, Equatable, Codable, Sendable {
     var providerProfileID: String? = nil
     var providerIsActive: Bool? = nil
     var providerStatus: String? = nil
+    var quotaReferenceDate: Date? = nil
 
     var accountProvider: AccountProvider {
         provider ?? .codex
@@ -107,6 +115,16 @@ struct Account: Identifiable, Equatable, Codable, Sendable {
 
     var isClaudeAccount: Bool {
         accountProvider == .claude
+    }
+
+    var isGeminiAccount: Bool {
+        accountProvider == .gemini
+    }
+
+    var supplementaryQuota: (label: String, window: QuotaWindow)? {
+        if isGeminiAccount, let argonQuotaWindow { return ("Argon", argonQuotaWindow) }
+        if isClaudeAccount, let fableQuotaWindow { return ("Fable", fableQuotaWindow) }
+        return nil
     }
 
     var emailPrefix: String {
@@ -126,9 +144,9 @@ struct Account: Identifiable, Equatable, Codable, Sendable {
     }
 
     var displayPlanName: String? {
-        if isClaudeAccount,
+        if (isGeminiAccount || isClaudeAccount),
            plan.trimmingCharacters(in: .whitespacesAndNewlines)
-            .caseInsensitiveCompare("Claude") == .orderedSame {
+            .caseInsensitiveCompare(accountProvider.displayName) == .orderedSame {
             return nil
         }
         return PlanDisplayFormatter.badgeText(for: plan)
@@ -242,6 +260,9 @@ struct Account: Identifiable, Equatable, Codable, Sendable {
     }
 
     var canSwitchProviderAccount: Bool {
+        if isGeminiAccount {
+            return providerProfileID != nil && ["ok", "cached", "unavailable"].contains(providerStatus ?? "")
+        }
         guard isClaudeAccount else { return isUsableForCodex }
         switch providerStatus {
         case "ok", "cached":
@@ -269,6 +290,7 @@ struct Account: Identifiable, Equatable, Codable, Sendable {
             weeklyResetSeconds: max(0, weeklyResetSeconds - elapsed),
             quotaWindows: quotaWindows?.map { $0.agingResetTimer(by: elapsed) },
             fableQuotaWindow: fableQuotaWindow?.agingResetTimer(by: elapsed),
+            argonQuotaWindow: argonQuotaWindow?.agingResetTimer(by: elapsed),
             planRenewalDate: planRenewalDate,
             hasError: hasError,
             errorMessage: errorMessage,
@@ -276,13 +298,19 @@ struct Account: Identifiable, Equatable, Codable, Sendable {
             providerAccountNumber: providerAccountNumber,
             providerProfileID: providerProfileID,
             providerIsActive: providerIsActive,
-            providerStatus: providerStatus
+            providerStatus: providerStatus,
+            quotaReferenceDate: quotaReferenceDate?.addingTimeInterval(elapsed)
         )
+    }
+
+    func rebased(to date: Date, fallbackReference: Date?) -> Account {
+        guard let reference = quotaReferenceDate ?? fallbackReference else { return self }
+        return agingResetTimers(by: max(0, date.timeIntervalSince(reference)))
     }
 
     /// Hours until weekly window resets (from API `reset_after_seconds`).
     var hoursUntilWeeklyReset: Double {
-        guard let weeklyQuotaWindow else { return .infinity }
+        guard let weeklyQuotaWindow, weeklyQuotaWindow.hasKnownResetTime else { return .infinity }
         return max(0, weeklyQuotaWindow.resetAfterSeconds / 3600)
     }
 
@@ -315,7 +343,8 @@ private extension QuotaWindow {
         QuotaWindow(
             limitSeconds: limitSeconds,
             remainingPercent: remainingPercent,
-            resetAfterSeconds: max(0, resetAfterSeconds - elapsed)
+            resetAfterSeconds: max(0, resetAfterSeconds - elapsed),
+            resetTimeKnown: resetTimeKnown
         )
     }
 }
@@ -484,6 +513,8 @@ struct Theme {
             return Color(lightHex: "0C7D6AE7", darkHex: "127D6AE7")
         case .claude:
             return Color(lightHex: "0CD97757", darkHex: "12D97757")
+        case .gemini:
+            return Color(lightHex: "0C4285F4", darkHex: "124285F4")
         }
     }
 
@@ -493,6 +524,8 @@ struct Theme {
             return Color(lightHex: "207D6AE7", darkHex: "307D6AE7")
         case .claude:
             return Color(lightHex: "20D97757", darkHex: "30D97757")
+        case .gemini:
+            return Color(lightHex: "204285F4", darkHex: "304285F4")
         }
     }
 
@@ -502,6 +535,8 @@ struct Theme {
             return Color(lightHex: "6752C7", darkHex: "B4A9FF")
         case .claude:
             return Color(lightHex: "A84F34", darkHex: "F3A184")
+        case .gemini:
+            return Color(lightHex: "3568B5", darkHex: "9FC1FF")
         }
     }
 

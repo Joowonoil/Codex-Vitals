@@ -34,6 +34,7 @@ enum UsageResetDetector {
         return currentAccounts.flatMap { current -> [UsageResetEvent] in
             let key = accountKey(current)
             guard !current.hasError,
+                  current.providerStatus != "cached",
                   let previous = previousByKey[key],
                   !previous.hasError else {
                 return []
@@ -45,11 +46,12 @@ enum UsageResetDetector {
 
             return windows(for: current).compactMap { currentWindow in
                 guard let previousWindow = previousWindows[currentWindow.key] else { return nil }
+                guard previousWindow.window.hasKnownResetTime, currentWindow.window.hasKnownResetTime else { return nil }
 
-                let previousResetAt = previousFetchedAt.addingTimeInterval(
+                let previousResetAt = (previous.quotaReferenceDate ?? previousFetchedAt).addingTimeInterval(
                     previousWindow.window.resetAfterSeconds
                 )
-                let currentResetAt = currentFetchedAt.addingTimeInterval(
+                let currentResetAt = (current.quotaReferenceDate ?? currentFetchedAt).addingTimeInterval(
                     currentWindow.window.resetAfterSeconds
                 )
                 let resetHasPassed = currentFetchedAt.timeIntervalSince(previousResetAt)
@@ -83,6 +85,9 @@ enum UsageResetDetector {
         }
         if let fable = account.fableQuotaWindow {
             result.append((key: "fable", label: "Fable 5", window: fable))
+        }
+        if let argon = account.argonQuotaWindow {
+            result.append((key: "argon", label: "Argon", window: argon))
         }
         return result
     }

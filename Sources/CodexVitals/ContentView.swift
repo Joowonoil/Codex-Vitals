@@ -112,6 +112,9 @@ struct ContentView: View {
                     Button("Add Codex Account", systemImage: "command") {
                         viewModel.addCodexAccount()
                     }
+                    Button("Add Gemini Account", systemImage: "sparkle") {
+                        viewModel.addGeminiAccount()
+                    }
                     Button {
                         viewModel.addClaudeAccount()
                     } label: {
@@ -434,6 +437,9 @@ private struct HeaderAccountMenu: View {
             Button("Add Codex Account", systemImage: "command") {
                 vm.addCodexAccount()
             }
+            Button("Add Gemini Account", systemImage: "sparkle") {
+                vm.addGeminiAccount()
+            }
             Button {
                 vm.addClaudeAccount()
             } label: {
@@ -466,7 +472,7 @@ private struct HeaderAccountMenu: View {
         .animation(.easeOut(duration: 0.12), value: isHovered)
         .onHover { isHovered = $0 }
         .help("Add account")
-        .accessibilityLabel("Add Codex or Claude account")
+        .accessibilityLabel("Add account")
     }
 }
 

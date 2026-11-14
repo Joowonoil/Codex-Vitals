@@ -21,6 +21,18 @@ final class UsageViewModel: ObservableObject {
     @Published var isCodexInstalled = false
     @Published var lastRefresh: Date?
     @Published var error: String?
+    @Published private(set) var geminiStatusMessage: String?
+    @Published var geminiTrackingEnabled = UserDefaults.standard.object(forKey: "geminiTrackingEnabled") as? Bool ?? true {
+        didSet {
+            guard oldValue != geminiTrackingEnabled else { return }
+            UserDefaults.standard.set(geminiTrackingEnabled, forKey: "geminiTrackingEnabled")
+            if !geminiTrackingEnabled {
+                accounts.removeAll(where: \.isGeminiAccount)
+                geminiStatusMessage = nil
+            }
+            refresh()
+        }
+    }
 
     @Published var searchText = ""
     @Published var groupByWorkspace = false {
@@ -54,6 +66,7 @@ final class UsageViewModel: ObservableObject {
 
     private let service = UsageService()
     private let claudeService = ClaudeAccountService()
+    private let geminiService = GeminiAccountService()
     private let captureService = CodexAccountCaptureService()
     private let switchService = CodexAccountSwitchService()
     private let removalService = LocalAccountRemovalService()
@@ -77,7 +90,7 @@ final class UsageViewModel: ObservableObject {
         UserDefaults.standard.removeObject(forKey: "accountInformationMode")
         listDensity = .compact
         if let snap = AccountSnapshotStore.load() {
-            accounts = snap.accounts
+            accounts = snap.accounts.filter { geminiTrackingEnabled || !$0.isGeminiAccount }
             lastRefresh = snap.lastRefresh
         }
         codexLoginStatus = CodexLoginStatusStore.load()
@@ -302,30 +315,31 @@ final class UsageViewModel: ObservableObject {
                 previousAccounts: previousAccounts,
                 previousFetchedAt: previousRefresh
             )
+            async let geminiResult = geminiTrackingEnabled
+                ? geminiService.loadAccounts(
+                    previousAccounts: previousAccounts,
+                    previousFetchedAt: previousRefresh,
+                    forceRefresh: forceMetadataRefresh
+                )
+                : GeminiLoadResult(accounts: [], errorMessage: nil)
             let (loadedCodexAccounts, loadedClaudeResult) = await (codexAccounts, claudeResult)
-            let loadedAccounts = loadedCodexAccounts + loadedClaudeResult.accounts
+            applyRefresh(
+                loadedCodexAccounts + loadedClaudeResult.accounts, providers: [.codex, .claude],
+                previousAccounts: previousAccounts, previousRefresh: previousRefresh, notifyOnReset: notifyOnReset
+            )
             if let claudeError = loadedClaudeResult.errorMessage {
                 accountActionError = claudeError
             }
-            let now = Date()
-            let resetEvents = notifyOnReset && resetNotificationsEnabled
-                ? UsageResetDetector.detect(
-                    previousAccounts: previousAccounts,
-                    previousFetchedAt: previousRefresh,
-                    currentAccounts: loadedAccounts,
-                    currentFetchedAt: now
-                )
-                : []
-            accounts = loadedAccounts
-            lastRefresh = now
-            AccountSnapshotStore.save(accounts: accounts, lastRefresh: now)
+            let loadedGeminiResult = await geminiResult
+            geminiStatusMessage = geminiTrackingEnabled ? loadedGeminiResult.errorMessage : nil
+            applyRefresh(
+                geminiTrackingEnabled ? loadedGeminiResult.accounts : [], providers: [.gemini],
+                previousAccounts: previousAccounts, previousRefresh: previousRefresh, notifyOnReset: notifyOnReset
+            )
             codexLoginStatus = CodexLoginStatusStore.load()
             refreshCodexAvailability()
             isLoading = false
             restartRefreshTimer()
-            if !resetEvents.isEmpty {
-                await resetNotificationService.deliver(events: resetEvents)
-            }
             if pendingRefreshAfterCurrent {
                 let shouldForceMetadata = pendingForceMetadataRefreshAfterCurrent
                 let shouldNotifyOnReset = pendingResetNotificationCheck
@@ -337,6 +351,25 @@ final class UsageViewModel: ObservableObject {
                     notifyOnReset: shouldNotifyOnReset
                 )
             }
+        }
+    }
+
+    private func applyRefresh(
+        _ loaded: [Account], providers: Set<AccountProvider>, previousAccounts: [Account],
+        previousRefresh: Date?, notifyOnReset: Bool
+    ) {
+        let now = Date()
+        accounts = accounts.filter { !providers.contains($0.accountProvider) }
+            .map { $0.rebased(to: now, fallbackReference: lastRefresh) }
+            + loaded.map { $0.rebased(to: now, fallbackReference: now) }
+        lastRefresh = now
+        AccountSnapshotStore.save(accounts: accounts, lastRefresh: now)
+        if notifyOnReset && resetNotificationsEnabled {
+            let events = UsageResetDetector.detect(
+                previousAccounts: previousAccounts.filter { providers.contains($0.accountProvider) },
+                previousFetchedAt: previousRefresh, currentAccounts: loaded, currentFetchedAt: now
+            )
+            if !events.isEmpty { Task { await resetNotificationService.deliver(events: events) } }
         }
     }
 
@@ -392,6 +425,7 @@ final class UsageViewModel: ObservableObject {
     }
 
     func needsRelogin(_ account: Account) -> Bool {
+        if account.isGeminiAccount { return account.providerStatus == "reloginRequired" }
         if account.isClaudeAccount {
             return [
                 ClaudeAccountStatus.tokenExpired.rawValue,
@@ -412,7 +446,7 @@ final class UsageViewModel: ObservableObject {
     }
 
     func isActiveAccount(_ account: Account) -> Bool {
-        if account.isClaudeAccount {
+        if account.isClaudeAccount || account.isGeminiAccount {
             return account.providerIsActive == true
         }
         guard isCodexInstalled else { return false }
@@ -424,7 +458,8 @@ final class UsageViewModel: ObservableObject {
     }
 
     func showsSwitchControls(for account: Account) -> Bool {
-        account.isClaudeAccount ? account.providerProfileID != nil : isCodexInstalled
+        if account.isGeminiAccount { return account.providerProfileID != nil }
+        return account.isClaudeAccount ? account.providerProfileID != nil : isCodexInstalled
     }
 
     func canSwitchAccount(_ account: Account) -> Bool {
@@ -505,6 +540,26 @@ final class UsageViewModel: ObservableObject {
         }
     }
 
+    func addGeminiAccount() {
+        guard !hasPendingAccountAction else { return }
+        isAddingAccount = true
+        addingAccountProvider = .gemini
+        accountActionError = nil
+        reloginTask = Task {
+            do {
+                _ = try await geminiService.addAccount()
+                guard !Task.isCancelled else { return }
+                geminiTrackingEnabled = true
+            } catch is CancellationError {
+                return
+            } catch { accountActionError = error.localizedDescription }
+            isAddingAccount = false
+            addingAccountProvider = nil
+            reloginTask = nil
+            refresh(forceMetadataRefresh: true)
+        }
+    }
+
     func relogin(_ account: Account) {
         guard !hasPendingAccountAction else { return }
         pendingDebouncedRefreshTask?.cancel()
@@ -514,7 +569,9 @@ final class UsageViewModel: ObservableObject {
 
         reloginTask = Task {
             do {
-                if account.isClaudeAccount {
+                if account.isGeminiAccount {
+                    _ = try await geminiService.addAccount(expectedProfileID: account.providerProfileID)
+                } else if account.isClaudeAccount {
                     guard let profileID = account.providerProfileID else {
                         throw ClaudeNativeError.profileMissing
                     }
@@ -523,12 +580,12 @@ final class UsageViewModel: ObservableObject {
                     _ = try await captureService.captureAccount(for: account)
                 }
                 guard !Task.isCancelled else { return }
-                if !account.isClaudeAccount {
+                if account.accountProvider == .codex {
                     codexLoginStatus = CodexLoginStatusStore.load()
                 }
                 reloggingAccountID = nil
                 reloginTask = nil
-                if account.isClaudeAccount {
+                if account.isClaudeAccount || account.isGeminiAccount {
                     refresh(forceMetadataRefresh: true)
                 } else {
                     schedulePostCaptureRefresh()
@@ -556,6 +613,19 @@ final class UsageViewModel: ObservableObject {
     }
 
     func setAlias(_ alias: String?, for account: Account) {
+        if account.isGeminiAccount {
+            guard let id = account.providerProfileID else { return }
+            Task {
+                do {
+                    try await geminiService.updateAlias(profileID: id, alias: alias)
+                    if let index = accounts.firstIndex(where: { $0.id == account.id }) {
+                        accounts[index].alias = Account.normalizedAlias(alias)
+                        AccountSnapshotStore.save(accounts: accounts, lastRefresh: lastRefresh)
+                    }
+                } catch { accountActionError = error.localizedDescription }
+            }
+            return
+        }
         if account.isClaudeAccount {
             guard let profileID = account.providerProfileID else {
                 accountActionError = "Claude account profile is missing."
@@ -593,15 +663,19 @@ final class UsageViewModel: ObservableObject {
     }
 
     func setPlanRenewalDate(_ date: Date?, for account: Account) {
-        guard account.isClaudeAccount,
+        guard account.isClaudeAccount || account.isGeminiAccount,
               let profileID = account.providerProfileID else {
-            accountActionError = "Claude account profile is missing."
+            accountActionError = "\(account.accountProvider.displayName) account profile is missing."
             return
         }
 
         Task {
             do {
-                try await claudeService.updatePlanRenewalDate(profileID: profileID, date: date)
+                if account.isGeminiAccount {
+                    try await geminiService.updatePlanRenewalDate(profileID: profileID, date: date)
+                } else {
+                    try await claudeService.updatePlanRenewalDate(profileID: profileID, date: date)
+                }
                 if let index = accounts.firstIndex(where: { $0.id == account.id }) {
                     accounts[index].planRenewalDate = date
                     AccountSnapshotStore.save(accounts: accounts, lastRefresh: lastRefresh)
@@ -624,6 +698,15 @@ final class UsageViewModel: ObservableObject {
         }
 
         let normalizedAlias = Account.normalizedAlias(alias)
+        if provider == .gemini {
+            Task {
+                do {
+                    try await geminiService.updateWorkspaceAlias(workspace: workspaceKey, alias: normalizedAlias)
+                    applyWorkspaceAlias(normalizedAlias, workspace: workspaceKey, provider: provider)
+                } catch { accountActionError = error.localizedDescription }
+            }
+            return
+        }
         if provider == .claude {
             Task {
                 do {
@@ -669,7 +752,7 @@ final class UsageViewModel: ObservableObject {
     }
 
     func canReorderAccount(_ account: Account) -> Bool {
-        let hasStoredProfile = account.isClaudeAccount
+        let hasStoredProfile = account.accountProvider != .codex
             ? account.providerProfileID != nil
             : account.profileKey != nil
         return searchText.isEmpty && hasStoredProfile
@@ -717,6 +800,15 @@ final class UsageViewModel: ObservableObject {
         let rowsByID = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
         let reorderedRows = reorderedIDs.compactMap { rowsByID[$0] }
         switch provider {
+        case .gemini:
+            let ids = reorderedRows.compactMap(\.providerProfileID)
+            Task {
+                do {
+                    try await geminiService.updateOrder(profileIDs: ids)
+                    applyManualOrder(provider: .gemini, orderedKeys: ids)
+                } catch { accountActionError = error.localizedDescription }
+            }
+            return true
         case .codex:
             let orderedProfileKeys = reorderedRows.compactMap(\.profileKey)
             guard !orderedProfileKeys.isEmpty else { return false }
@@ -805,8 +897,8 @@ final class UsageViewModel: ObservableObject {
         let reorderedProviderAccounts = accounts
             .filter { $0.accountProvider == provider }
             .sorted { a, b in
-            let leftKey = provider == .claude ? a.providerProfileID : a.profileKey
-            let rightKey = provider == .claude ? b.providerProfileID : b.profileKey
+            let leftKey = provider != .codex ? a.providerProfileID : a.profileKey
+            let rightKey = provider != .codex ? b.providerProfileID : b.profileKey
             let ia = leftKey.flatMap { order[$0] } ?? Int.max
             let ib = rightKey.flatMap { order[$0] } ?? Int.max
             if ia != ib { return ia < ib }
@@ -829,9 +921,12 @@ final class UsageViewModel: ObservableObject {
         switchingAccountID = account.id
         accountActionError = nil
 
-        switchTask = Task.detached { [switchService, claudeService] in
+        switchTask = Task.detached { [switchService, claudeService, geminiService] in
             do {
-                if account.isClaudeAccount {
+                if account.isGeminiAccount {
+                    guard let id = account.providerProfileID else { throw GeminiUsageError.profileMissing }
+                    try await geminiService.switchAccount(profileID: id)
+                } else if account.isClaudeAccount {
                     guard let profileID = account.providerProfileID else {
                         throw ClaudeNativeError.profileMissing
                     }
@@ -845,7 +940,7 @@ final class UsageViewModel: ObservableObject {
                 await MainActor.run {
                     self.switchingAccountID = nil
                     self.switchTask = nil
-                    if account.isClaudeAccount {
+                    if account.isClaudeAccount || account.isGeminiAccount {
                         self.refresh()
                     }
                 }
@@ -867,6 +962,17 @@ final class UsageViewModel: ObservableObject {
         guard !hasPendingAccountAction else { return }
         removingAccountID = account.id
         accountActionError = nil
+        if account.isGeminiAccount {
+            Task {
+                defer { removingAccountID = nil }
+                do {
+                    guard let id = account.providerProfileID else { throw GeminiUsageError.profileMissing }
+                    try await geminiService.removeAccount(profileID: id)
+                    refresh()
+                } catch { accountActionError = error.localizedDescription }
+            }
+            return
+        }
 
         if account.isClaudeAccount {
             Task {

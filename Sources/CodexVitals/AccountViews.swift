@@ -242,7 +242,7 @@ struct AccountListView: View {
                 isRemoving: vm.isRemoving(acc),
                 isRemoveBlocked: vm.hasPendingAccountAction && !vm.isRemoving(acc),
                 allowsRemoval: true,
-                allowsAlias: true,
+                allowsAlias: acc.accountProvider == .codex || acc.providerProfileID != nil,
                 allowsReordering: vm.canReorderAccount(acc),
                 relogin: { vm.relogin(acc) },
                 cancelRelogin: { vm.cancelRelogin() },
@@ -302,8 +302,7 @@ private struct ReorderableAccountRow<Content: View>: View {
 
     private var rowHeight: CGFloat {
         let baseHeight: CGFloat = account.hasDisplayAlias ? 40 : 34
-        let fableHeight: CGFloat = account.isClaudeAccount && account.fableQuotaWindow != nil ? 22 : 0
-        return baseHeight + fableHeight
+        return baseHeight + (account.supplementaryQuota != nil ? 22 : 0)
     }
 
     private var dragPreview: some View {
@@ -355,6 +354,7 @@ struct SectionHeader: View {
     let displayName: String
     let count: Int
     let hasAlias: Bool
+    var allowsRenaming = true
     let setAlias: (String?) -> Void
 
     var body: some View {
@@ -368,21 +368,23 @@ struct SectionHeader: View {
         .background(Theme.sectionSurface)
         .contentShape(Rectangle())
         .contextMenu {
-            Button(hasAlias ? "Edit Workspace Name..." : "Set Workspace Name...") {
-                WorkspaceAliasPrompt.edit(
-                    workspace: originalName,
-                    displayName: displayName,
-                    hasAlias: hasAlias,
-                    save: setAlias
-                )
-            }
-            if hasAlias {
-                Button("Clear Workspace Name") {
-                    setAlias(nil)
+            if allowsRenaming {
+                Button(hasAlias ? "Edit Workspace Name..." : "Set Workspace Name...") {
+                    WorkspaceAliasPrompt.edit(
+                        workspace: originalName,
+                        displayName: displayName,
+                        hasAlias: hasAlias,
+                        save: setAlias
+                    )
+                }
+                if hasAlias {
+                    Button("Clear Workspace Name") {
+                        setAlias(nil)
+                    }
                 }
             }
         }
-        .help(hasAlias ? "Original workspace: \(originalName)" : "Set workspace display name")
+        .help(allowsRenaming ? (hasAlias ? "Original workspace: \(originalName)" : "Set workspace display name") : displayName)
     }
 }
 
@@ -633,12 +635,9 @@ struct AccountCompactRow: View {
     @State private var isShowingRemovalConfirmation = false
 
     private var exhausted: Bool { account.isWeeklyExhausted }
-    private var hasFableQuota: Bool {
-        account.isClaudeAccount && account.fableQuotaWindow != nil
-    }
     private var rowHeight: CGFloat {
         let baseHeight: CGFloat = account.hasDisplayAlias ? 40 : 34
-        return baseHeight + (hasFableQuota ? 22 : 0)
+        return baseHeight + (account.supplementaryQuota != nil ? 22 : 0)
     }
     private var canShowSwapControl: Bool {
         showsSwitchControls
@@ -647,8 +646,8 @@ struct AccountCompactRow: View {
             && !needsRelogin
             && !isRelogging
     }
-    private var isUsingCachedClaudeUsage: Bool {
-        account.isClaudeAccount && account.providerStatus == ClaudeAccountStatus.cached.rawValue
+    private var isUsingCachedUsage: Bool {
+        (account.isClaudeAccount || account.isGeminiAccount) && account.providerStatus == "cached"
     }
 
     private var rowBackgroundColor: Color {
@@ -733,7 +732,7 @@ struct AccountCompactRow: View {
                 }
                 Divider()
             }
-            if account.isClaudeAccount {
+            if account.isClaudeAccount || account.isGeminiAccount {
                 Button(account.planRenewalDate == nil
                     ? "Set Plan Renewal Date..."
                     : "Edit Plan Renewal Date...") {
@@ -749,9 +748,11 @@ struct AccountCompactRow: View {
                 }
                 Divider()
             }
-            Button("Copy email") {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(account.email, forType: .string)
+            if account.email.contains("@") {
+                Button("Copy email") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(account.email, forType: .string)
+                }
             }
             if allowsRemoval {
                 Divider()
@@ -772,6 +773,11 @@ struct AccountCompactRow: View {
     }
 
     private var removalConfirmationMessage: String {
+        if account.isGeminiAccount {
+            return isActiveAccount
+                ? "\(account.email) will be hidden from Codex Vitals. Antigravity stays signed in."
+                : "\(account.email) will be removed from Codex Vitals. The active Antigravity account is unchanged."
+        }
         if account.isClaudeAccount {
             if isActiveAccount {
                 return "\(account.email) will be hidden from Codex Vitals. Claude Code stays signed in."
@@ -896,31 +902,34 @@ struct AccountCompactRow: View {
                 planCycleText(width: layout.planCycleWidth)
             }
 
-            if let fableWindow = account.fableQuotaWindow {
-                fableQuotaMetric(fableWindow, layout: layout, width: width)
+            if let supplementary = account.supplementaryQuota {
+                supplementaryQuotaMetric(supplementary.window, label: supplementary.label, layout: layout, width: width)
             }
         }
         .frame(width: width, alignment: .trailing)
     }
 
-    private func fableQuotaMetric(
+    private func supplementaryQuotaMetric(
         _ window: QuotaWindow,
+        label: String,
         layout: CompactRowLayout.Metrics,
         width: CGFloat
     ) -> some View {
         let dimmed = window.isExhausted
         let meterWidth = width - layout.weeklyResetWidth - 2
         return HStack(spacing: 2) {
-            FableQuotaMeter(
+            SupplementaryQuotaMeter(
+                label: label,
+                provider: account.accountProvider,
                 pct: window.remainingPercent,
                 dimmed: dimmed,
                 width: meterWidth
             )
             ResetTimeBadge(
-                text: ResetFormatter.compact(seconds: window.resetAfterSeconds),
+                text: window.hasKnownResetTime ? ResetFormatter.compact(seconds: window.resetAfterSeconds) : "--",
                 color: .secondary,
                 width: layout.weeklyResetWidth,
-                help: ResetFormatter.fullTooltip(seconds: window.resetAfterSeconds)
+                help: window.hasKnownResetTime ? ResetFormatter.fullTooltip(seconds: window.resetAfterSeconds) : "Reset time unavailable"
             )
         }
         .frame(width: width, alignment: .trailing)
@@ -954,7 +963,7 @@ struct AccountCompactRow: View {
     ) -> some View {
         let urgent = window.kind == .weekly && account.isWeeklyResetUrgent && !dimmed
         let color: Color = urgent ? Theme.warningText : .secondary
-        let text = window.kind == .fiveHour
+        let text = !window.hasKnownResetTime ? "--" : window.kind == .fiveHour
             ? ResetFormatter.timeOnly(seconds: window.resetAfterSeconds)
             : ResetFormatter.compact(seconds: window.resetAfterSeconds)
 
@@ -962,7 +971,7 @@ struct AccountCompactRow: View {
             text: text,
             color: color,
             width: width,
-            help: ResetFormatter.fullTooltip(seconds: window.resetAfterSeconds),
+            help: window.hasKnownResetTime ? ResetFormatter.fullTooltip(seconds: window.resetAfterSeconds) : "Reset time unavailable",
             systemImage: urgent ? "clock" : nil
         )
         .opacity(dimmed ? 0.76 : 1)
@@ -1004,7 +1013,7 @@ struct AccountCompactRow: View {
                     .scaleEffect(0.65)
             } else if canShowSwapControl {
                 ZStack {
-                    if isUsingCachedClaudeUsage {
+                    if isUsingCachedUsage {
                         cachedUsageIndicator
                             .opacity(hovered ? 0 : 1)
                     }
@@ -1016,7 +1025,7 @@ struct AccountCompactRow: View {
                         .opacity(hovered ? 1 : 0)
                         .allowsHitTesting(hovered)
                 }
-            } else if isUsingCachedClaudeUsage {
+            } else if isUsingCachedUsage {
                 cachedUsageIndicator
             } else {
                 Color.clear.frame(width: width, height: 1)
@@ -1029,7 +1038,7 @@ struct AccountCompactRow: View {
         Image(systemName: "clock.arrow.circlepath")
             .font(.system(size: 10, weight: .medium))
             .foregroundStyle(.secondary)
-            .help("Showing the last successful Claude usage while refresh is paused")
+            .help("Showing the last successful \(account.accountProvider.displayName) usage while refresh is paused")
     }
 }
 
@@ -1185,7 +1194,10 @@ struct CodexIconView: View {
 
     private static let image: NSImage = {
         let codexPNG = Bundle.main.url(forResource: "codex", withExtension: "png")
+        let repositoryAsset = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("Support/codex.png")
         let image = codexPNG.flatMap { NSImage(contentsOf: $0) }
+            ?? NSImage(contentsOf: repositoryAsset)
             ?? NSWorkspace.shared.icon(forFile: "/Applications/ChatGPT.app")
         image.size = NSSize(width: 16, height: 16)
         image.isTemplate = true
@@ -1247,6 +1259,11 @@ struct ProviderIconView: View {
                         ? Theme.providerText(for: provider)
                         : Theme.warningText.opacity(0.9)
                 )
+            case .gemini:
+                Image(systemName: "sparkle")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Theme.providerText(for: .gemini))
+                    .frame(width: 16, height: 16)
             }
         }
     }
@@ -1360,16 +1377,18 @@ struct QuotaMeter: View {
     }
 }
 
-struct FableQuotaMeter: View {
+struct SupplementaryQuotaMeter: View {
+    let label: String
+    let provider: AccountProvider
     let pct: Double
     let dimmed: Bool
     let width: CGFloat
 
     var body: some View {
         HStack(spacing: 6) {
-            Text("Fable")
+            Text(label)
                 .font(Theme.metadataFont)
-                .foregroundStyle(Theme.providerText(for: .claude))
+                .foregroundStyle(Theme.providerText(for: provider))
                 .lineLimit(1)
                 .frame(width: 34, alignment: .leading)
 
@@ -1389,7 +1408,7 @@ struct FableQuotaMeter: View {
                 .frame(width: 34, alignment: .trailing)
         }
         .frame(width: width, height: 18)
-        .help("Fable: \(String(format: "%.0f%%", pct)) remaining")
+        .help("\(label): \(String(format: "%.0f%%", pct)) remaining")
     }
 }
 
