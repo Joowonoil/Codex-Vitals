@@ -1,6 +1,6 @@
 # Codex Vitals: Codex, Claude, and Gemini usage from the menu bar
 
-> **Codex Vitals is now Ramter's Vital on macOS.** Releases from v1.8.0 onward, source updates, and new macOS issues live in [Ramters-Vital](https://github.com/Joowonoil/Ramters-Vital). Existing macOS installations can upgrade in the app without re-adding accounts. Older releases and the current Windows installer are still available here.
+> **Codex Vitals is now Ramter's Vital on both macOS and Windows.** Starting with **macOS v1.8.0** and **Windows v1.1.0**, downloads, source updates, and issue tracking for both platforms are in [Ramters-Vital](https://github.com/Joowonoil/Ramters-Vital). This repository preserves the [original Codex Vitals releases](https://github.com/Joowonoil/Codex-Vitals/releases).
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-macOS%2013+-000000?logo=apple" alt="macOS 13+">
@@ -17,18 +17,20 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Joowonoil/Codex-Vitals/releases/download/v1.7.1/CodexVitals-1.7.1.dmg"><strong>Download for macOS</strong></a>
+  <a href="https://github.com/Joowonoil/Ramters-Vital#macos"><strong>Get Ramter's Vital for macOS</strong></a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
-  <a href="https://github.com/Joowonoil/Codex-Vitals/releases/download/windows-v1.0.0/CodexVitals-Windows-1.0.0-Setup.exe"><strong>Download for Windows</strong></a>
+  <a href="https://github.com/Joowonoil/Ramters-Vital#windows"><strong>Get Ramter's Vital for Windows</strong></a>
 </p>
 
 <p align="center">
   <img src="docs/screenshot.png" alt="Codex Vitals menu bar usage dashboard with sanitized sample accounts" width="900">
 </p>
 
-## Overview
+## Legacy Codex Vitals
 
-**Codex Vitals** helps you monitor OpenAI Codex usage, reset windows, account state, and workspaces from the macOS menu bar or Windows system tray. On macOS it also manages Claude Code accounts and provides experimental Gemini support through an installed Antigravity CLI (`agy`). Each provider remains independently signed in and switches independently. Windows currently supports Codex only.
+The feature descriptions below refer to the original Codex Vitals releases. For current platform support, see the [Ramter's Vital README](https://github.com/Joowonoil/Ramters-Vital#readme).
+
+**Codex Vitals** helps you monitor OpenAI Codex usage, reset windows, account state, and workspaces from the macOS menu bar or Windows system tray. On macOS it also manages Claude Code accounts and provides experimental Gemini support through an installed Antigravity CLI (`agy`). Each provider remains independently signed in and switches independently. The legacy Windows v1.0.0 build supported Codex only.
 
 - View best-effort Codex quota and usage across all your accounts
 - Group accounts by workspace/team
@@ -100,7 +102,7 @@ Choose **Usage** in Settings to keep the best account to use now near the top, o
 
 ### macOS
 
-Download the latest `.pkg` from [Releases](../../releases), double-click to run the installer, and Codex Vitals will be installed to `/Applications`.
+For the current macOS installer, see [Ramter's Vital for macOS](https://github.com/Joowonoil/Ramters-Vital#macos).
 
 To add a Claude account, open Codex Vitals, choose the account-add button, and select **Add Claude Account**. The app starts the official `claude auth login` browser flow, then stores that account's saved credential in its own macOS Keychain service. Switching remains a manual action; Codex Vitals does not automatically rotate accounts.
 
@@ -108,7 +110,7 @@ For experimental Gemini support, the app imports the currently signed-in consume
 
 ### Windows
 
-Download [`CodexVitals-Windows-1.0.0-Setup.exe`](https://github.com/Joowonoil/Codex-Vitals/releases/download/windows-v1.0.0/CodexVitals-Windows-1.0.0-Setup.exe) and run it. The current direct installer is not Authenticode-signed, so Microsoft Defender SmartScreen may show a warning. Choose **More info** and **Run anyway** only for the installer downloaded from this repository or [ramterstudio.com](https://ramterstudio.com/codex-vitals/).
+For the current Windows installer, see [Ramter's Vital for Windows](https://github.com/Joowonoil/Ramters-Vital#windows). Windows v1.0.0 remains available in the [legacy releases](https://github.com/Joowonoil/Codex-Vitals/releases/tag/windows-v1.0.0).
 
 ### Build From Source
 
@@ -232,13 +234,13 @@ No. Codex Vitals is local-first and does not sync tokens, account data, or usage
 
 ### How does Claude support work?
 
-On macOS, Codex Vitals imports the currently active Claude Code account, stores saved account credentials in an app-specific Keychain service, and queries best-effort 5-hour and 7-day usage. When Anthropic reports a scoped Fable 5 limit, the app also shows its weekly remaining usage and reset time in a separate detail row. Available account metadata is used to display the Claude plan, while an optional plan renewal date can be entered locally. Accounts can be grouped into named workspaces and reordered. Adding or reconnecting uses Claude Code's official browser login. Switching is explicit and transactional, affects Claude Code only, and preserves unrelated `~/.claude.json` settings. Claude support is not yet included in the Windows build.
+On macOS, Codex Vitals imports the currently active Claude Code account, stores saved account credentials in an app-specific Keychain service, and queries best-effort 5-hour and 7-day usage. When Anthropic reports a scoped Fable 5 limit, the app also shows its weekly remaining usage and reset time in a separate detail row. Available account metadata is used to display the Claude plan, while an optional plan renewal date can be entered locally. Accounts can be grouped into named workspaces and reordered. Adding or reconnecting uses Claude Code's official browser login. Switching is explicit and transactional, affects Claude Code only, and preserves unrelated `~/.claude.json` settings. Claude was not included in the legacy Windows v1.0.0 build.
 
 ### How does Gemini support work?
 
 On macOS, the experimental integration uses the consumer account signed into Antigravity CLI (`agy`). The main Gemini row displays its 5-hour and weekly limits, with a tooltip identifying the models that share them when Google supplies that metadata. Separate model quotas, including Argon and Carbon, receive their own detail rows when reported. Models explicitly listed as sharing the main Gemini allowance display a link icon and `Gemini` instead of duplicating that balance. Hydrogen does not receive a duplicate row when it is included in the main allowance. Unsupported models are hidden, and a missing reported quota value is shown as `--`, not full or unlimited. Antigravity's third-party-model quotas are not shown.
 
-Saved accounts support aliases, workspace labels, renewal dates, ordering, reconnect, and explicit manual switching independently of Codex and Claude. Existing running Antigravity sessions must be closed before authentication changes. Enterprise auth is not supported. Pro quota reads have been verified live; Carbon's separate, shared, and missing-value states are covered by fixture tests and sanitized UI previews, but a live Ultra account has not been verified. This integration is unofficial and subject to the Google policy warning above; it is not included in the Windows build.
+Saved accounts support aliases, workspace labels, renewal dates, ordering, reconnect, and explicit manual switching independently of Codex and Claude. Existing running Antigravity sessions must be closed before authentication changes. Enterprise auth is not supported. Pro quota reads have been verified live; Carbon's separate, shared, and missing-value states are covered by fixture tests and sanitized UI previews, but a live Ultra account has not been verified. This integration is unofficial and subject to the Google policy warning above; it was not included in the legacy Windows v1.0.0 build.
 
 ## Contributing
 
