@@ -1,5 +1,7 @@
 # Codex Vitals: Codex, Claude, and Gemini usage from the menu bar
 
+> **Codex Vitals is now Ramter's Vital on macOS.** Releases from v1.8.0 onward, source updates, and new macOS issues live in [Ramters-Vital](https://github.com/Joowonoil/Ramters-Vital). Existing macOS installations can upgrade in the app without re-adding accounts. Older releases and the current Windows installer are still available here.
+
 <p align="center">
   <img src="https://img.shields.io/badge/platform-macOS%2013+-000000?logo=apple" alt="macOS 13+">
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078D4?logo=windows11" alt="Windows 10/11">
